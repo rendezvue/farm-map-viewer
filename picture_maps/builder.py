@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
@@ -24,6 +26,34 @@ def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], *, fil
         draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
     else:
         draw.rectangle(box, fill=fill, outline=outline, width=width)
+
+
+def text_size(draw: ImageDraw.ImageDraw, text: str) -> tuple[int, int]:
+    if hasattr(draw, "textbbox"):
+        bbox = draw.textbbox((0, 0), text)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    return draw.textsize(text)
+
+
+def draw_shadow_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, *, fill: str = "#fbfaf5", shadow: str = "#09100c") -> None:
+    shadow_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1), (1, 1)]
+    for dx, dy in shadow_offsets:
+        draw.text((x + dx, y + dy), text, fill=shadow)
+    draw.text((x, y), text, fill=fill)
+
+
+def draw_corner_label(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, *, corner: str, padding: int = 8, fill: str = "#fbfaf5", shadow: str = "#09100c") -> None:
+    left, top, right, bottom = box
+    width, height = text_size(draw, text)
+    if corner.endswith("left"):
+        x = left + padding
+    else:
+        x = right - padding - width
+    if corner.startswith("top"):
+        y = top + padding
+    else:
+        y = bottom - padding - height
+    draw_shadow_text(draw, x, y, text, fill=fill, shadow=shadow)
 
 
 def build_dataset(config: BuildConfig) -> dict[str, Any]:
@@ -125,13 +155,11 @@ def render_missing_tile(size: tuple[int, int], label: str) -> Image.Image:
     image = Image.new("RGB", size, "#d9d2c3")
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, size[0] - 1, size[1] - 1), outline="#b39a74", width=2)
-    draw.text((10, 8), label, fill="#5a4e3e")
+    draw_shadow_text(draw, 10, 8, label, fill="#fbfaf5", shadow="#5a4e3e")
     return image
 
 
 def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: int, cell_height: int) -> None:
-    if destination.exists():
-        return
     destination.parent.mkdir(parents=True, exist_ok=True)
     background = Image.new("RGB", (cell_width, cell_height), "#ebe6da")
     draw = ImageDraw.Draw(background)
@@ -145,6 +173,12 @@ def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: i
         "rear": (0, sub_height),
         "side": (sub_width, sub_height),
     }
+    label_corners = {
+        "front_left": "top_left",
+        "front_right": "top_right",
+        "rear": "bottom_left",
+        "side": "bottom_right",
+    }
     for camera_name in CAMERA_ORDER:
         left, top = positions[camera_name]
         info = frame["cameras"].get(camera_name)
@@ -155,14 +189,20 @@ def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: i
             tile = render_missing_tile((sub_width, sub_height), camera_name)
         background.paste(tile, (left, top))
         draw.rectangle((left, top, left + sub_width - 1, top + sub_height - 1), outline="#f6f1e7", width=1)
-        badge_text = camera_name.replace("_", " ")
-        badge_w = 14 + len(badge_text) * 7
-        draw_panel(draw, (left + 8, top + 8, left + badge_w, top + 28), radius=10, fill="#143f31")
-        draw.text((left + 14, top + 12), badge_text, fill="white")
+        draw_corner_label(
+            draw,
+            (left, top, left + sub_width - 1, top + sub_height - 1),
+            camera_name.replace("_", " "),
+            corner=label_corners[camera_name],
+        )
 
-    draw_panel(draw, (10, cell_height - 32, cell_width - 10, cell_height - 10), radius=10, fill="#102b23")
-    draw.text((18, cell_height - 27), frame["label"], fill="#f4f0e7")
+    draw_corner_label(draw, (0, 0, cell_width - 1, cell_height - 1), frame["rail_name"], corner="bottom_left", padding=10)
     background.save(destination, format="JPEG", quality=84)
+
+
+def render_contact_sheet_job(job: tuple[dict[str, Any], Path, int, int]) -> None:
+    frame, destination, cell_width, cell_height = job
+    render_contact_sheet(frame, destination, cell_width, cell_height)
 
 
 def build_contact_sheets(
@@ -172,11 +212,12 @@ def build_contact_sheets(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     public_frames: list[dict[str, Any]] = []
     server_frames: dict[str, Any] = {}
+    render_jobs: list[tuple[dict[str, Any], Path, int, int]] = []
 
     for frame in dataset["frames"]:
         rect = frame_rect_px(frame, dataset, layout)
         cell_path = config.cells_dir / f'{frame["id"]:05d}.jpg'
-        render_contact_sheet(frame, cell_path, layout["cell_width"], layout["cell_height"])
+        render_jobs.append((frame, cell_path, layout["cell_width"], layout["cell_height"]))
 
         cameras_public: dict[str, Any] = {}
         cameras_private: dict[str, Any] = {}
@@ -212,6 +253,11 @@ def build_contact_sheets(
             "contact_sheet_path": str(cell_path),
             "cameras": cameras_private,
         }
+
+    if render_jobs:
+        max_workers = min(8, os.cpu_count() or 4)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            list(executor.map(render_contact_sheet_job, render_jobs))
 
     return public_frames, {"dataset_dir": str(config.dataset_dir), "frames": server_frames}
 

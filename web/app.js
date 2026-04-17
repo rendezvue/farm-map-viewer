@@ -5,6 +5,12 @@ const CAMERA_LABELS = {
   rear: "Rear",
   side: "Side",
 };
+const CAMERA_LABEL_CORNERS = {
+  front_left: "is-top-left",
+  front_right: "is-top-right",
+  rear: "is-bottom-left",
+  side: "is-bottom-right",
+};
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -320,7 +326,11 @@ class TileMap {
     const wrapper = document.createElement("div");
     wrapper.className = "detail-frame";
     wrapper.dataset.frameId = String(frame.id);
+    const grid = document.createElement("div");
+    grid.className = "detail-grid";
     for (const cameraName of CAMERA_ORDER) {
+      const cell = document.createElement("div");
+      cell.className = `detail-cell-wrap ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
       const camera = frame.cameras[cameraName];
       if (camera) {
         const image = document.createElement("img");
@@ -330,13 +340,22 @@ class TileMap {
         image.decoding = "async";
         image.loading = "lazy";
         image.src = camera.url;
-        wrapper.appendChild(image);
+        cell.appendChild(image);
       } else {
         const placeholder = document.createElement("div");
         placeholder.className = "detail-cell is-missing";
-        wrapper.appendChild(placeholder);
+        cell.appendChild(placeholder);
       }
+      const label = document.createElement("span");
+      label.className = "detail-cell-label";
+      label.textContent = CAMERA_LABELS[cameraName] || cameraName;
+      cell.appendChild(label);
+      grid.appendChild(cell);
     }
+    const frameLabel = document.createElement("div");
+    frameLabel.className = "detail-frame-label";
+    frameLabel.textContent = frame.rail_name;
+    wrapper.append(grid, frameLabel);
     this.detailPane.appendChild(wrapper);
     return wrapper;
   }

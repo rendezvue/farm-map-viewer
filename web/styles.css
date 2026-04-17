@@ -322,9 +322,6 @@ button {
 
 .detail-frame {
   position: absolute;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
   overflow: hidden;
   border-radius: 14px;
   background: #ede6d8;
@@ -332,6 +329,19 @@ button {
     inset 0 0 0 1px rgba(245, 240, 232, 0.9),
     inset 0 0 0 2px rgba(22, 48, 39, 0.14);
   transform-origin: top left;
+}
+
+.detail-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.detail-cell-wrap {
+  position: relative;
+  overflow: hidden;
 }
 
 .detail-cell {
@@ -346,6 +356,54 @@ button {
   background:
     linear-gradient(135deg, rgba(20, 63, 49, 0.12), rgba(20, 63, 49, 0.04)),
     #d7cfbf;
+}
+
+.detail-frame-label,
+.detail-cell-label {
+  position: absolute;
+  color: rgba(255, 253, 247, 0.98);
+  font-family: "Space Grotesk", "IBM Plex Sans KR", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.85),
+    0 0 10px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.detail-frame-label {
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+}
+
+.detail-cell-label {
+  font-size: 12px;
+}
+
+.detail-cell-wrap.is-top-left .detail-cell-label {
+  top: 10px;
+  left: 10px;
+}
+
+.detail-cell-wrap.is-top-right .detail-cell-label {
+  top: 10px;
+  right: 10px;
+  text-align: right;
+}
+
+.detail-cell-wrap.is-bottom-left .detail-cell-label {
+  left: 10px;
+  bottom: 10px;
+}
+
+.detail-cell-wrap.is-bottom-right .detail-cell-label {
+  right: 10px;
+  bottom: 10px;
+  text-align: right;
 }
 
 .hud {
