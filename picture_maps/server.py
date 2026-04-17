@@ -32,6 +32,23 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
+    def cache_control_for_path(self, path: str) -> str | None:
+        if (
+            path == "/"
+            or path.endswith((".html", ".js", ".css"))
+            or path.startswith("/tiles/")
+            or path.startswith("/api/")
+        ):
+            return "no-store"
+        return None
+
+    def end_headers(self) -> None:
+        parsed = urlparse(self.path)
+        cache_control = self.cache_control_for_path(parsed.path)
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
+        super().end_headers()
+
     def do_GET(self) -> None:
         self.handle_request(send_body=True)
 
@@ -115,7 +132,6 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "public, max-age=3600")
         self.end_headers()
         if send_body:
             self.wfile.write(data)

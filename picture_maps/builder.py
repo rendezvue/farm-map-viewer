@@ -56,6 +56,17 @@ def draw_corner_label(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
     draw_shadow_text(draw, x, y, text, fill=fill, shadow=shadow)
 
 
+def draw_center_label(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, *, edge: str = "top", padding: int = 8, fill: str = "#fbfaf5", shadow: str = "#09100c") -> None:
+    left, top, right, bottom = box
+    width, height = text_size(draw, text)
+    x = left + max(0, (right - left - width) // 2)
+    if edge == "bottom":
+        y = bottom - padding - height
+    else:
+        y = top + padding
+    draw_shadow_text(draw, x, y, text, fill=fill, shadow=shadow)
+
+
 def build_dataset(config: BuildConfig) -> dict[str, Any]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     config.tiles_dir.mkdir(parents=True, exist_ok=True)
@@ -196,7 +207,7 @@ def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: i
             corner=label_corners[camera_name],
         )
 
-    draw_corner_label(draw, (0, 0, cell_width - 1, cell_height - 1), frame["rail_name"], corner="bottom_left", padding=10)
+    draw_center_label(draw, (0, 0, cell_width - 1, cell_height - 1), frame["rail_name"], edge="top", padding=10)
     background.save(destination, format="JPEG", quality=84)
 
 
