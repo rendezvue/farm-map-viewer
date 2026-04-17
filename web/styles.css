@@ -296,13 +296,19 @@ button {
 }
 
 .tile-pane,
+.detail-pane,
 .overlay-canvas {
   position: absolute;
   inset: 0;
 }
 
+.detail-pane,
 .overlay-canvas {
   pointer-events: none;
+}
+
+.detail-pane {
+  z-index: 1;
 }
 
 .map-tile {
@@ -312,6 +318,34 @@ button {
   transform-origin: top left;
   image-rendering: auto;
   will-change: transform;
+}
+
+.detail-frame {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border-radius: 14px;
+  background: #ede6d8;
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 240, 232, 0.9),
+    inset 0 0 0 2px rgba(22, 48, 39, 0.14);
+  transform-origin: top left;
+}
+
+.detail-cell {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #ded6c3;
+}
+
+.detail-cell.is-missing {
+  background:
+    linear-gradient(135deg, rgba(20, 63, 49, 0.12), rgba(20, 63, 49, 0.04)),
+    #d7cfbf;
 }
 
 .hud {
@@ -404,4 +438,3 @@ button {
     max-width: none;
   }
 }
-

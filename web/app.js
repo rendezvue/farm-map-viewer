@@ -40,10 +40,41 @@ function setActiveRail(railName) {
   }
 }
 
+function computeDetailSheetSize(frame) {
+  let maxWidth = 0;
+  let maxHeight = 0;
+  for (const cameraName of CAMERA_ORDER) {
+    const camera = frame.cameras[cameraName];
+    if (!camera) continue;
+    maxWidth = Math.max(maxWidth, camera.width || 0);
+    maxHeight = Math.max(maxHeight, camera.height || 0);
+  }
+  if (!maxWidth || !maxHeight) return null;
+  return {
+    width: maxWidth * 2,
+    height: maxHeight * 2,
+  };
+}
+
+function computeViewerMaxZoom(manifest, frames) {
+  let detailScale = 1;
+  for (const frame of frames) {
+    const size = computeDetailSheetSize(frame);
+    if (!size) continue;
+    detailScale = Math.max(
+      detailScale,
+      size.width / frame.rect_px.width,
+      size.height / frame.rect_px.height,
+    );
+  }
+  return manifest.max_zoom + Math.log2(detailScale);
+}
+
 class TileMap {
-  constructor({ container, tilePane, overlayCanvas, manifest, frames, onSelect, onViewChange }) {
+  constructor({ container, tilePane, detailPane, overlayCanvas, manifest, frames, onSelect, onViewChange, maxZoom }) {
     this.container = container;
     this.tilePane = tilePane;
+    this.detailPane = detailPane;
     this.overlayCanvas = overlayCanvas;
     this.ctx = overlayCanvas.getContext("2d");
     this.manifest = manifest;
@@ -51,8 +82,13 @@ class TileMap {
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
+    this.visibleDetails = new Map();
     this.selectedFrameId = null;
-    this.currentZoom = clamp(manifest.max_zoom - 3, manifest.min_zoom, manifest.max_zoom);
+    this.minZoom = manifest.min_zoom;
+    this.maxZoom = Math.max(maxZoom || manifest.max_zoom, manifest.max_zoom);
+    this.detailFadeStartZoom = Math.min(this.maxZoom, manifest.max_zoom + 0.35);
+    this.detailFadeSpan = 0.6;
+    this.currentZoom = clamp(manifest.max_zoom - 3, this.minZoom, this.maxZoom);
     this.centerX = manifest.image_width / 2;
     this.centerY = manifest.image_height / 2;
     this.pointerAnchor = null;
@@ -153,8 +189,8 @@ class TileMap {
     const fitScale = Math.min(scaleX, scaleY) * 0.94;
     this.currentZoom = clamp(
       this.manifest.max_zoom + Math.log2(fitScale),
-      this.manifest.min_zoom,
-      this.manifest.max_zoom,
+      this.minZoom,
+      this.maxZoom,
     );
     this.centerX = this.manifest.image_width / 2;
     this.centerY = this.manifest.image_height / 2;
@@ -167,7 +203,7 @@ class TileMap {
     this.centerX = rect.center_x;
     this.centerY = rect.center_y;
     this.selectedFrameId = frame.id;
-    this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 1.2), this.manifest.min_zoom, this.manifest.max_zoom);
+    this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 1.2), this.minZoom, this.maxZoom);
     this.queueRender();
   }
 
@@ -193,7 +229,7 @@ class TileMap {
 
   zoomBy(delta, anchor) {
     const before = this.screenToWorld(anchor.x, anchor.y);
-    this.currentZoom = clamp(this.currentZoom + delta, this.manifest.min_zoom, this.manifest.max_zoom);
+    this.currentZoom = clamp(this.currentZoom + delta, this.minZoom, this.maxZoom);
     const scale = this.baseScale;
     this.centerX = before.x - (anchor.x - this.viewportWidth / 2) / scale;
     this.centerY = before.y - (anchor.y - this.viewportHeight / 2) / scale;
@@ -204,7 +240,6 @@ class TileMap {
     const scale = this.baseScale;
     this.centerX -= dx / scale;
     this.centerY -= dy / scale;
-    this.clampCenter();
     this.queueRender();
   }
 
@@ -272,19 +307,86 @@ class TileMap {
     return bestInside || bestNear;
   }
 
+  getViewBounds() {
+    return {
+      left: this.centerX - this.viewportWidth / (2 * this.baseScale),
+      top: this.centerY - this.viewportHeight / (2 * this.baseScale),
+      right: this.centerX + this.viewportWidth / (2 * this.baseScale),
+      bottom: this.centerY + this.viewportHeight / (2 * this.baseScale),
+    };
+  }
+
+  createDetailFrame(frame) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "detail-frame";
+    wrapper.dataset.frameId = String(frame.id);
+    for (const cameraName of CAMERA_ORDER) {
+      const camera = frame.cameras[cameraName];
+      if (camera) {
+        const image = document.createElement("img");
+        image.className = "detail-cell";
+        image.alt = `${frame.label} ${cameraName}`;
+        image.draggable = false;
+        image.decoding = "async";
+        image.loading = "lazy";
+        image.src = camera.url;
+        wrapper.appendChild(image);
+      } else {
+        const placeholder = document.createElement("div");
+        placeholder.className = "detail-cell is-missing";
+        wrapper.appendChild(placeholder);
+      }
+    }
+    this.detailPane.appendChild(wrapper);
+    return wrapper;
+  }
+
+  renderDetailFrames(bounds) {
+    const fade = clamp((this.currentZoom - this.detailFadeStartZoom) / this.detailFadeSpan, 0, 1);
+    this.detailPane.style.opacity = fade.toFixed(3);
+    if (fade <= 0) {
+      for (const detail of this.visibleDetails.values()) detail.remove();
+      this.visibleDetails.clear();
+      return;
+    }
+
+    const padding = 96 / this.baseScale;
+    const wanted = new Set();
+    for (const frame of this.frames) {
+      const rect = frame.rect_px;
+      if (rect.right < bounds.left - padding || rect.left > bounds.right + padding) continue;
+      if (rect.bottom < bounds.top - padding || rect.top > bounds.bottom + padding) continue;
+      wanted.add(frame.id);
+      let detail = this.visibleDetails.get(frame.id);
+      if (!detail) {
+        detail = this.createDetailFrame(frame);
+        this.visibleDetails.set(frame.id, detail);
+      }
+      const topLeft = this.worldToScreen(rect.left, rect.top);
+      const bottomRight = this.worldToScreen(rect.right, rect.bottom);
+      detail.style.left = `${topLeft.x}px`;
+      detail.style.top = `${topLeft.y}px`;
+      detail.style.width = `${bottomRight.x - topLeft.x}px`;
+      detail.style.height = `${bottomRight.y - topLeft.y}px`;
+    }
+
+    for (const [frameId, detail] of this.visibleDetails.entries()) {
+      if (wanted.has(frameId)) continue;
+      detail.remove();
+      this.visibleDetails.delete(frameId);
+    }
+  }
+
   render() {
     const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
     const tileScale = 2 ** (this.currentZoom - tileZoom);
     const tileWorldSize = this.manifest.tile_size * 2 ** (this.manifest.max_zoom - tileZoom);
     const zoomDims = this.manifest.zoom_dimensions[String(tileZoom)];
-    const leftWorld = this.centerX - this.viewportWidth / (2 * this.baseScale);
-    const topWorld = this.centerY - this.viewportHeight / (2 * this.baseScale);
-    const rightWorld = this.centerX + this.viewportWidth / (2 * this.baseScale);
-    const bottomWorld = this.centerY + this.viewportHeight / (2 * this.baseScale);
-    const tx0 = clamp(Math.floor(leftWorld / tileWorldSize), 0, zoomDims.tiles_x - 1);
-    const ty0 = clamp(Math.floor(topWorld / tileWorldSize), 0, zoomDims.tiles_y - 1);
-    const tx1 = clamp(Math.floor(rightWorld / tileWorldSize), 0, zoomDims.tiles_x - 1);
-    const ty1 = clamp(Math.floor(bottomWorld / tileWorldSize), 0, zoomDims.tiles_y - 1);
+    const bounds = this.getViewBounds();
+    const tx0 = clamp(Math.floor(bounds.left / tileWorldSize), 0, zoomDims.tiles_x - 1);
+    const ty0 = clamp(Math.floor(bounds.top / tileWorldSize), 0, zoomDims.tiles_y - 1);
+    const tx1 = clamp(Math.floor(bounds.right / tileWorldSize), 0, zoomDims.tiles_x - 1);
+    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldSize), 0, zoomDims.tiles_y - 1);
     const wanted = new Set();
 
     for (let ty = ty0; ty <= ty1; ty += 1) {
@@ -317,6 +419,7 @@ class TileMap {
       this.visibleTiles.delete(key);
     }
 
+    this.renderDetailFrames(bounds);
     this.drawOverlay();
     this.onViewChange({
       zoom: this.currentZoom,
@@ -479,9 +582,11 @@ async function bootstrap() {
   const map = new TileMap({
     container: document.getElementById("mapViewport"),
     tilePane: document.getElementById("tilePane"),
+    detailPane: document.getElementById("detailPane"),
     overlayCanvas: document.getElementById("overlayCanvas"),
     manifest,
     frames,
+    maxZoom: computeViewerMaxZoom(manifest, frames),
     onSelect: (frame) => renderSelection(frame),
     onViewChange: ({ zoom, screenPxPerMeter }) => {
       zoomValue.textContent = formatZoom(zoom);
