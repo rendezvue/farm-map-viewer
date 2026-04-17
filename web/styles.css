@@ -1,0 +1,407 @@
+:root {
+  --bg: #eee7d6;
+  --panel: rgba(247, 243, 232, 0.86);
+  --panel-strong: rgba(255, 251, 242, 0.94);
+  --line: rgba(34, 53, 45, 0.14);
+  --text: #183126;
+  --muted: #5f6e63;
+  --accent: #1f6a4d;
+  --accent-soft: #d8eadf;
+  --warm: #b96935;
+  --shadow: 0 20px 50px rgba(56, 45, 17, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "IBM Plex Sans KR", "Noto Sans KR", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.72), transparent 34%),
+    linear-gradient(135deg, #efe6d0 0%, #ece4d4 48%, #dbe2cd 100%);
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 368px minmax(0, 1fr);
+  height: 100%;
+  gap: 18px;
+  padding: 18px;
+}
+
+.sidebar,
+.map-stage {
+  min-height: 0;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand,
+.panel,
+.map-card,
+.topbar {
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+.brand,
+.panel,
+.topbar {
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+}
+
+.brand {
+  padding: 22px 22px 18px;
+}
+
+.brand h1,
+.topbar h2,
+.panel h2 {
+  margin: 0;
+  font-family: "Space Grotesk", "IBM Plex Sans KR", sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--warm);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.summary {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.panel {
+  padding: 18px;
+  min-height: 0;
+}
+
+.panel-selection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ghost-button {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(31, 106, 77, 0.22);
+  padding: 10px 14px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.rail-chip {
+  padding: 12px 14px;
+  border: 1px solid rgba(24, 49, 38, 0.11);
+  background: var(--panel-strong);
+  color: var(--text);
+  border-radius: 18px;
+  text-align: left;
+}
+
+.rail-chip strong,
+.rail-chip span {
+  display: block;
+}
+
+.rail-chip span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rail-chip.is-active {
+  background: linear-gradient(180deg, #215f48 0%, #183e31 100%);
+  color: white;
+}
+
+.rail-chip.is-active span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.selection-meta {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.selection-meta dl {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px 10px;
+  margin: 0;
+}
+
+.selection-meta dt {
+  color: var(--warm);
+  font-weight: 700;
+}
+
+.selection-meta dd {
+  margin: 0;
+}
+
+.hero-preview {
+  margin-top: 14px;
+}
+
+.hero-preview img {
+  display: block;
+  width: 100%;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: #f6f1e7;
+}
+
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.camera-card {
+  background: var(--panel-strong);
+  border: 1px solid rgba(24, 49, 38, 0.11);
+  border-radius: 18px;
+  padding: 10px;
+}
+
+.camera-card img {
+  width: 100%;
+  display: block;
+  border-radius: 12px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #ded6c3;
+}
+
+.camera-card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--warm);
+}
+
+.map-stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+}
+
+.topbar-copy p,
+.topbar-copy h2 {
+  margin: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+}
+
+.toolbar button {
+  min-width: 46px;
+  padding: 12px 16px;
+}
+
+.map-card {
+  background: linear-gradient(180deg, rgba(252, 250, 244, 0.92), rgba(239, 233, 219, 0.86));
+  overflow: hidden;
+  min-height: 0;
+}
+
+.map-viewport {
+  position: relative;
+  height: 100%;
+  min-height: 520px;
+  overflow: hidden;
+  cursor: grab;
+  background:
+    linear-gradient(180deg, rgba(254, 252, 247, 0.9), rgba(246, 240, 228, 0.92)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(74, 92, 77, 0.03) 0,
+      rgba(74, 92, 77, 0.03) 1px,
+      transparent 1px,
+      transparent 80px
+    );
+}
+
+.map-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.tile-pane,
+.overlay-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.overlay-canvas {
+  pointer-events: none;
+}
+
+.map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  transform-origin: top left;
+  image-rendering: auto;
+  will-change: transform;
+}
+
+.hud {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 10px;
+  z-index: 3;
+}
+
+.hud-card,
+.map-tip {
+  background: rgba(22, 42, 34, 0.84);
+  color: white;
+  backdrop-filter: blur(10px);
+  border-radius: 18px;
+}
+
+.hud-card {
+  padding: 11px 14px;
+  min-width: 92px;
+}
+
+.hud-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.map-tip {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  max-width: 360px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    order: 2;
+  }
+
+  .map-stage {
+    order: 1;
+  }
+
+  .rail-list,
+  .camera-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar {
+    justify-content: stretch;
+  }
+
+  .toolbar button {
+    flex: 1;
+  }
+
+  .rail-list,
+  .camera-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .map-tip {
+    left: 18px;
+    right: 18px;
+    max-width: none;
+  }
+}
+

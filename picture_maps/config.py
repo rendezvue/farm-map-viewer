@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from pathlib import Path
+
+
+DEFAULT_DATASET = Path("/home/nas/rdv_md3/uv_camera_db/ubuntu/20260416_235959")
+
+
+@dataclass(frozen=True)
+class BuildConfig:
+    dataset_dir: Path
+    build_root: Path
+    rail_spacing_m: float = 3.0
+    tile_size: int = 256
+    cell_width: int = 320
+    cell_height: int = 180
+    gap_x: int = 24
+    gap_y: int = 12
+    margin_x: int = 160
+    margin_y: int = 140
+    background: str = "#f3f1e7"
+
+    @property
+    def dataset_key(self) -> str:
+        payload = "|".join(
+            [
+                str(self.dataset_dir.resolve()),
+                str(self.rail_spacing_m),
+                str(self.cell_width),
+                str(self.cell_height),
+                str(self.gap_x),
+                str(self.gap_y),
+                str(self.margin_x),
+                str(self.margin_y),
+            ]
+        )
+        digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]
+        return f"{self.dataset_dir.name}_{digest}"
+
+    @property
+    def output_dir(self) -> Path:
+        return self.build_root / self.dataset_key
+
+    @property
+    def tiles_dir(self) -> Path:
+        return self.output_dir / "tiles"
+
+    @property
+    def cells_dir(self) -> Path:
+        return self.output_dir / "cells"
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.output_dir / "manifest.json"
+
+    @property
+    def frames_path(self) -> Path:
+        return self.output_dir / "frames.json"
+
+    @property
+    def server_index_path(self) -> Path:
+        return self.output_dir / "server_index.json"

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Picture Maps</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <p class="eyebrow">Farm Picture Tiles</p>
+          <h1>Picture Maps</h1>
+          <p class="summary" id="datasetSummary">데이터셋을 불러오는 중입니다.</p>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Rails</h2>
+            <button class="ghost-button" id="fitButton" type="button">전체 보기</button>
+          </div>
+          <div class="rail-list" id="railList"></div>
+        </section>
+
+        <section class="panel panel-selection">
+          <div class="panel-head">
+            <h2>Selection</h2>
+            <span class="pill" id="selectionPill">none</span>
+          </div>
+          <div id="selectionMeta" class="selection-meta">
+            <p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>
+          </div>
+          <div class="hero-preview">
+            <img id="contactSheet" alt="" hidden />
+          </div>
+          <div class="camera-grid" id="cameraGrid"></div>
+        </section>
+      </aside>
+
+      <main class="map-stage">
+        <header class="topbar">
+          <div class="topbar-copy">
+            <p class="eyebrow">Tiled Viewer</p>
+            <h2>네이버지도식 타일 피라미드 농장 뷰어</h2>
+          </div>
+          <div class="toolbar">
+            <button id="zoomOutButton" type="button">-</button>
+            <button id="zoomInButton" type="button">+</button>
+            <button id="reloadButton" type="button">새로고침</button>
+          </div>
+        </header>
+
+        <section class="map-card">
+          <div id="mapViewport" class="map-viewport">
+            <div id="tilePane" class="tile-pane"></div>
+            <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+            <div class="hud">
+              <div class="hud-card">
+                <span class="hud-label">Zoom</span>
+                <strong id="zoomValue">-</strong>
+              </div>
+              <div class="hud-card">
+                <span class="hud-label">Scale</span>
+                <strong id="scaleValue">-</strong>
+              </div>
+            </div>
+            <div class="map-tip">
+              휠로 확대/축소, 드래그로 이동, 프레임 클릭 시 원본 4카메라 확인
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+
