@@ -166,7 +166,6 @@ def render_missing_tile(size: tuple[int, int], label: str) -> Image.Image:
     image = Image.new("RGB", size, "#d9d2c3")
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, size[0] - 1, size[1] - 1), outline="#b39a74", width=2)
-    draw_shadow_text(draw, 10, 8, label, fill="#fbfaf5", shadow="#5a4e3e")
     return image
 
 
@@ -184,12 +183,6 @@ def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: i
         "rear": (0, sub_height),
         "side": (sub_width, sub_height),
     }
-    label_corners = {
-        "front_left": "top_left",
-        "front_right": "top_right",
-        "rear": "bottom_left",
-        "side": "bottom_right",
-    }
     for camera_name in CAMERA_ORDER:
         left, top = positions[camera_name]
         info = frame["cameras"].get(camera_name)
@@ -200,14 +193,6 @@ def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: i
             tile = render_missing_tile((sub_width, sub_height), camera_name)
         background.paste(tile, (left, top))
         draw.rectangle((left, top, left + sub_width - 1, top + sub_height - 1), outline="#f6f1e7", width=1)
-        draw_corner_label(
-            draw,
-            (left, top, left + sub_width - 1, top + sub_height - 1),
-            camera_name.replace("_", " "),
-            corner=label_corners[camera_name],
-        )
-
-    draw_center_label(draw, (0, 0, cell_width - 1, cell_height - 1), frame["rail_name"], edge="top", padding=10)
     background.save(destination, format="JPEG", quality=84)
 
 

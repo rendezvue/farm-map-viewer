@@ -77,10 +77,11 @@ function computeViewerMaxZoom(manifest, frames) {
 }
 
 class TileMap {
-  constructor({ container, tilePane, detailPane, overlayCanvas, manifest, frames, onSelect, onViewChange, maxZoom }) {
+  constructor({ container, tilePane, detailPane, annotationPane, overlayCanvas, manifest, frames, onSelect, onViewChange, maxZoom }) {
     this.container = container;
     this.tilePane = tilePane;
     this.detailPane = detailPane;
+    this.annotationPane = annotationPane;
     this.overlayCanvas = overlayCanvas;
     this.ctx = overlayCanvas.getContext("2d");
     this.manifest = manifest;
@@ -89,6 +90,7 @@ class TileMap {
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
     this.visibleDetails = new Map();
+    this.visibleAnnotations = new Map();
     this.selectedFrameId = null;
     this.minZoom = manifest.min_zoom;
     this.maxZoom = Math.max(maxZoom || manifest.max_zoom, manifest.max_zoom);
@@ -330,7 +332,7 @@ class TileMap {
     grid.className = "detail-grid";
     for (const cameraName of CAMERA_ORDER) {
       const cell = document.createElement("div");
-      cell.className = `detail-cell-wrap ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
+      cell.className = "detail-cell-wrap";
       const camera = frame.cameras[cameraName];
       if (camera) {
         const image = document.createElement("img");
@@ -346,18 +348,75 @@ class TileMap {
         placeholder.className = "detail-cell is-missing";
         cell.appendChild(placeholder);
       }
-      const label = document.createElement("span");
-      label.className = "detail-cell-label";
-      label.textContent = CAMERA_LABELS[cameraName] || cameraName;
-      cell.appendChild(label);
       grid.appendChild(cell);
     }
-    const frameLabel = document.createElement("div");
-    frameLabel.className = "detail-frame-label";
-    frameLabel.textContent = frame.rail_name;
-    wrapper.append(grid, frameLabel);
+    wrapper.appendChild(grid);
     this.detailPane.appendChild(wrapper);
     return wrapper;
+  }
+
+  createFrameAnnotation(frame) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "frame-annotation";
+    wrapper.dataset.frameId = String(frame.id);
+
+    const railLabel = document.createElement("div");
+    railLabel.className = "frame-annotation-label";
+    railLabel.textContent = frame.rail_name;
+    wrapper.appendChild(railLabel);
+
+    for (const cameraName of CAMERA_ORDER) {
+      const label = document.createElement("div");
+      label.className = `frame-camera-label ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
+      label.textContent = CAMERA_LABELS[cameraName] || cameraName;
+      wrapper.appendChild(label);
+    }
+
+    this.annotationPane.appendChild(wrapper);
+    return wrapper;
+  }
+
+  renderAnnotations(bounds) {
+    const padding = 96 / this.baseScale;
+    const wanted = new Set();
+
+    for (const frame of this.frames) {
+      const rect = frame.rect_px;
+      if (rect.right < bounds.left - padding || rect.left > bounds.right + padding) continue;
+      if (rect.bottom < bounds.top - padding || rect.top > bounds.bottom + padding) continue;
+
+      const topLeft = this.worldToScreen(rect.left, rect.top);
+      const bottomRight = this.worldToScreen(rect.right, rect.bottom);
+      const screenW = bottomRight.x - topLeft.x;
+      const screenH = bottomRight.y - topLeft.y;
+      const showRail = screenW >= 64 && screenH >= 34;
+      const showCameras = screenW >= 112 && screenH >= 64;
+
+      if (!showRail && !showCameras) continue;
+
+      wanted.add(frame.id);
+      let annotation = this.visibleAnnotations.get(frame.id);
+      if (!annotation) {
+        annotation = this.createFrameAnnotation(frame);
+        this.visibleAnnotations.set(frame.id, annotation);
+      }
+
+      annotation.style.left = `${topLeft.x}px`;
+      annotation.style.top = `${topLeft.y}px`;
+      annotation.style.width = `${screenW}px`;
+      annotation.style.height = `${screenH}px`;
+      annotation.classList.toggle("show-rail", showRail);
+      annotation.classList.toggle("show-cameras", showCameras);
+      annotation.style.setProperty("--annotation-pad", `${clamp(Math.round(Math.min(screenW, screenH) * 0.08), 6, 14)}px`);
+      annotation.style.setProperty("--rail-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.095), 11, 16)}px`);
+      annotation.style.setProperty("--camera-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.075), 10, 14)}px`);
+    }
+
+    for (const [frameId, annotation] of this.visibleAnnotations.entries()) {
+      if (wanted.has(frameId)) continue;
+      annotation.remove();
+      this.visibleAnnotations.delete(frameId);
+    }
   }
 
   renderDetailFrames(bounds) {
@@ -439,6 +498,7 @@ class TileMap {
     }
 
     this.renderDetailFrames(bounds);
+    this.renderAnnotations(bounds);
     this.drawOverlay();
     this.onViewChange({
       zoom: this.currentZoom,
@@ -602,6 +662,7 @@ async function bootstrap() {
     container: document.getElementById("mapViewport"),
     tilePane: document.getElementById("tilePane"),
     detailPane: document.getElementById("detailPane"),
+    annotationPane: document.getElementById("annotationPane"),
     overlayCanvas: document.getElementById("overlayCanvas"),
     manifest,
     frames,
