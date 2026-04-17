@@ -55,9 +55,10 @@ class TileMap {
     this.currentZoom = clamp(manifest.max_zoom - 3, manifest.min_zoom, manifest.max_zoom);
     this.centerX = manifest.image_width / 2;
     this.centerY = manifest.image_height / 2;
+    this.pointerAnchor = null;
     this.drag = null;
     this.renderQueued = false;
-    this.resizeObserver = new ResizeObserver(() => this.fitToBounds(false));
+    this.resizeObserver = new ResizeObserver(() => this.queueRender());
     this.resizeObserver.observe(this.container);
     this.bind();
     this.fitToBounds(false);
@@ -70,16 +71,13 @@ class TileMap {
   bind() {
     this.container.addEventListener("wheel", (event) => {
       event.preventDefault();
-      const rect = this.container.getBoundingClientRect();
-      const anchor = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
+      const anchor = this.getAnchorFromEvent(event, { preferStored: true });
       const delta = event.deltaY > 0 ? -0.22 : 0.22;
       this.zoomBy(delta, anchor);
     }, { passive: false });
 
     this.container.addEventListener("pointerdown", (event) => {
+      this.updatePointerAnchor(event);
       this.container.setPointerCapture(event.pointerId);
       this.drag = {
         id: event.pointerId,
@@ -92,7 +90,12 @@ class TileMap {
       this.container.classList.add("is-dragging");
     });
 
+    this.container.addEventListener("pointerenter", (event) => {
+      this.updatePointerAnchor(event);
+    });
+
     this.container.addEventListener("pointermove", (event) => {
+      this.updatePointerAnchor(event);
       if (!this.drag || this.drag.id !== event.pointerId) return;
       const dx = event.clientX - this.drag.lastX;
       const dy = event.clientY - this.drag.lastY;
@@ -123,12 +126,11 @@ class TileMap {
 
     this.container.addEventListener("pointerup", endPointer);
     this.container.addEventListener("pointercancel", endPointer);
+    this.container.addEventListener("pointerleave", () => {
+      if (!this.drag) this.pointerAnchor = null;
+    });
     this.container.addEventListener("dblclick", (event) => {
-      const rect = this.container.getBoundingClientRect();
-      const anchor = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
+      const anchor = this.getAnchorFromEvent(event, { preferStored: true });
       this.zoomBy(0.7, anchor);
     });
   }
@@ -169,13 +171,32 @@ class TileMap {
     this.queueRender();
   }
 
+  updatePointerAnchor(event) {
+    const rect = this.container.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return this.pointerAnchor;
+    this.pointerAnchor = {
+      x: clamp(x, 0, rect.width),
+      y: clamp(y, 0, rect.height),
+    };
+    return this.pointerAnchor;
+  }
+
+  getAnchorFromEvent(event, { preferStored = false } = {}) {
+    if (preferStored && this.pointerAnchor) return this.pointerAnchor;
+    return this.updatePointerAnchor(event) || this.pointerAnchor || {
+      x: this.viewportWidth / 2,
+      y: this.viewportHeight / 2,
+    };
+  }
+
   zoomBy(delta, anchor) {
     const before = this.screenToWorld(anchor.x, anchor.y);
     this.currentZoom = clamp(this.currentZoom + delta, this.manifest.min_zoom, this.manifest.max_zoom);
     const scale = this.baseScale;
     this.centerX = before.x - (anchor.x - this.viewportWidth / 2) / scale;
     this.centerY = before.y - (anchor.y - this.viewportHeight / 2) / scale;
-    this.clampCenter();
     this.queueRender();
   }
 
@@ -191,14 +212,10 @@ class TileMap {
     const scale = this.baseScale;
     const halfW = this.viewportWidth / (2 * scale);
     const halfH = this.viewportHeight / (2 * scale);
-    if (this.manifest.image_width <= halfW * 2) {
-      this.centerX = this.manifest.image_width / 2;
-    } else {
+    if (this.manifest.image_width > halfW * 2) {
       this.centerX = clamp(this.centerX, halfW, this.manifest.image_width - halfW);
     }
-    if (this.manifest.image_height <= halfH * 2) {
-      this.centerY = this.manifest.image_height / 2;
-    } else {
+    if (this.manifest.image_height > halfH * 2) {
       this.centerY = clamp(this.centerY, halfH, this.manifest.image_height - halfH);
     }
   }
@@ -256,7 +273,6 @@ class TileMap {
   }
 
   render() {
-    this.clampCenter();
     const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
     const tileScale = 2 ** (this.currentZoom - tileZoom);
     const tileWorldSize = this.manifest.tile_size * 2 ** (this.manifest.max_zoom - tileZoom);
