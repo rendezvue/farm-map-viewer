@@ -31,6 +31,7 @@ class SessionData:
 
 class PictureMapsHandler(SimpleHTTPRequestHandler):
     server_version = "PictureMaps/0.1"
+    protocol_version = "HTTP/1.1"
 
     def __init__(self, *args, web_root: Path, sessions: dict[tuple[str, str], SessionData], **kwargs):
         self.web_root = web_root
