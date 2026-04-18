@@ -393,11 +393,11 @@ button {
 
 .map-tile {
   position: absolute;
-  width: 256px;
-  height: 256px;
-  transform-origin: top left;
+  overflow: hidden;
+  background-repeat: no-repeat;
+  background-position: top left;
   image-rendering: auto;
-  will-change: transform;
+  will-change: transform, width, height;
 }
 
 .detail-frame {
@@ -439,6 +439,7 @@ button {
 
 .frame-annotation {
   position: absolute;
+  overflow: hidden;
   --annotation-pad: 8px;
   --rail-font-size: 12px;
   --camera-font-size: 11px;

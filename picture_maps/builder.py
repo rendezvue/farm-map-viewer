@@ -323,7 +323,14 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
 
     tiles_x = math.ceil(W / config.tile_size)
     tiles_y = math.ceil(H / config.tile_size)
-    level_dimensions: dict[int, tuple[int, int]] = {max_zoom: (tiles_x, tiles_y)}
+    level_dimensions: dict[int, dict[str, int]] = {
+        max_zoom: {
+            "tiles_x": tiles_x,
+            "tiles_y": tiles_y,
+            "image_width": W,
+            "image_height": H,
+        }
+    }
 
     ts = config.tile_size
     for ty in range(tiles_y):
@@ -333,7 +340,7 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
             y1 = min(y0 + ts, H)
             tile = canvas[:, y0:y1, x0:x1]
             if tile.shape[1] < ts or tile.shape[2] < ts:
-                pad = torch.zeros(3, ts, ts, device=device)
+                pad = bg.expand(3, ts, ts).clone()
                 pad[:, :tile.shape[1], :tile.shape[2]] = tile
                 tile = pad
             arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
@@ -342,32 +349,46 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
             Image.fromarray(arr).save(path, format="JPEG", quality=82)
 
     current_canvas = canvas.unsqueeze(0)
+    current_width = W
+    current_height = H
     del canvas
     _free_cuda()
 
     for zoom in range(max_zoom - 1, -1, -1):
-        child_tiles_x, child_tiles_y = level_dimensions[zoom + 1]
-        parent_tiles_x = math.ceil(child_tiles_x / 2)
-        parent_tiles_y = math.ceil(child_tiles_y / 2)
-        level_dimensions[zoom] = (parent_tiles_x, parent_tiles_y)
+        new_width = max(1, math.ceil(current_width / 2))
+        new_height = max(1, math.ceil(current_height / 2))
+        parent_tiles_x = math.ceil(new_width / ts)
+        parent_tiles_y = math.ceil(new_height / ts)
+        level_dimensions[zoom] = {
+            "tiles_x": parent_tiles_x,
+            "tiles_y": parent_tiles_y,
+            "image_width": new_width,
+            "image_height": new_height,
+        }
 
-        new_H = parent_tiles_y * ts
-        new_W = parent_tiles_x * ts
         downsampled = F.interpolate(
             current_canvas,
-            size=(new_H, new_W),
+            size=(new_height, new_width),
             mode="bilinear",
             align_corners=False,
             antialias=True,
         )
         del current_canvas
         current_canvas = downsampled
+        current_width = new_width
+        current_height = new_height
 
         zoom_canvas = downsampled.squeeze(0)
         for ty in range(parent_tiles_y):
             for tx in range(parent_tiles_x):
                 x0, y0 = tx * ts, ty * ts
-                tile = zoom_canvas[:, y0:y0 + ts, x0:x0 + ts]
+                x1 = min(x0 + ts, current_width)
+                y1 = min(y0 + ts, current_height)
+                tile = zoom_canvas[:, y0:y1, x0:x1]
+                if tile.shape[1] < ts or tile.shape[2] < ts:
+                    pad = bg.expand(3, ts, ts).clone()
+                    pad[:, :tile.shape[1], :tile.shape[2]] = tile
+                    tile = pad
                 arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
                 path = config.tiles_dir / str(zoom) / str(tx) / f"{ty}.jpg"
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,7 +397,4 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
     del current_canvas
     _free_cuda()
 
-    return {
-        str(zoom): {"tiles_x": dims[0], "tiles_y": dims[1]}
-        for zoom, dims in sorted(level_dimensions.items())
-    }
+    return {str(zoom): dims for zoom, dims in sorted(level_dimensions.items())}

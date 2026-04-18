@@ -96,6 +96,17 @@ class TileMap {
     this.detailFadeStartZoom = Math.min(this.maxZoom, manifest.max_zoom + 0.35);
     this.detailFadeSpan = 0.6;
     this.currentZoom = clamp(manifest.max_zoom - 3, this.minZoom, this.maxZoom);
+    this.tileZoom = this.minZoom;
+    this.zoomDims = null;
+    this.zoomImageWidth = manifest.image_width;
+    this.zoomImageHeight = manifest.image_height;
+    this.integerScaleX = 1;
+    this.integerScaleY = 1;
+    this.scaleX = 1;
+    this.scaleY = 1;
+    this.tileScale = 1;
+    this.tileWorldWidth = manifest.tile_size;
+    this.tileWorldHeight = manifest.tile_size;
     this.centerX = manifest.image_width / 2;
     this.centerY = manifest.image_height / 2;
     this.pointerAnchor = null;
@@ -209,7 +220,36 @@ class TileMap {
 
   get viewportWidth() { return this.container.clientWidth; }
   get viewportHeight() { return this.container.clientHeight; }
-  get baseScale() { return 2 ** (this.currentZoom - this.manifest.max_zoom); }
+  get baseScale() { return Math.min(this.scaleX, this.scaleY); }
+
+  updateViewTransform() {
+    const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
+    const zoomDims = this.manifest.zoom_dimensions[String(tileZoom)] || {};
+    const fallbackScale = 2 ** (tileZoom - this.manifest.max_zoom);
+    const fallbackWidth = Math.max(1, Math.round(this.manifest.image_width * fallbackScale));
+    const fallbackHeight = Math.max(1, Math.round(this.manifest.image_height * fallbackScale));
+    const zoomImageWidth = Math.max(
+      1,
+      zoomDims.image_width || (zoomDims.tiles_x ? zoomDims.tiles_x * this.manifest.tile_size : fallbackWidth),
+    );
+    const zoomImageHeight = Math.max(
+      1,
+      zoomDims.image_height || (zoomDims.tiles_y ? zoomDims.tiles_y * this.manifest.tile_size : fallbackHeight),
+    );
+    const tileScale = 2 ** (this.currentZoom - tileZoom);
+
+    this.tileZoom = tileZoom;
+    this.zoomDims = zoomDims;
+    this.zoomImageWidth = zoomImageWidth;
+    this.zoomImageHeight = zoomImageHeight;
+    this.integerScaleX = zoomImageWidth / this.manifest.image_width;
+    this.integerScaleY = zoomImageHeight / this.manifest.image_height;
+    this.scaleX = this.integerScaleX * tileScale;
+    this.scaleY = this.integerScaleY * tileScale;
+    this.tileScale = tileScale;
+    this.tileWorldWidth = this.manifest.tile_size / this.integerScaleX;
+    this.tileWorldHeight = this.manifest.tile_size / this.integerScaleY;
+  }
 
   fitToBounds(render = true) {
     const scaleX = this.viewportWidth / this.manifest.image_width;
@@ -222,6 +262,7 @@ class TileMap {
     );
     this.centerX = this.manifest.image_width / 2;
     this.centerY = this.manifest.image_height / 2;
+    this.updateViewTransform();
     if (render) this.queueRender();
     else this.render();
   }
@@ -232,6 +273,7 @@ class TileMap {
     this.centerY = rect.center_y;
     this.selectedFrameId = frame.id;
     this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 1.2), this.minZoom, this.maxZoom);
+    this.updateViewTransform();
     this.queueRender();
   }
 
@@ -255,23 +297,21 @@ class TileMap {
   zoomBy(delta, anchor) {
     const before = this.screenToWorld(anchor.x, anchor.y);
     this.currentZoom = clamp(this.currentZoom + delta, this.minZoom, this.maxZoom);
-    const scale = this.baseScale;
-    this.centerX = before.x - (anchor.x - this.viewportWidth / 2) / scale;
-    this.centerY = before.y - (anchor.y - this.viewportHeight / 2) / scale;
+    this.updateViewTransform();
+    this.centerX = before.x - (anchor.x - this.viewportWidth / 2) / this.scaleX;
+    this.centerY = before.y - (anchor.y - this.viewportHeight / 2) / this.scaleY;
     this.queueRender();
   }
 
   panBy(dx, dy) {
-    const scale = this.baseScale;
-    this.centerX -= dx / scale;
-    this.centerY -= dy / scale;
+    this.centerX -= dx / this.scaleX;
+    this.centerY -= dy / this.scaleY;
     this.queueRender();
   }
 
   clampCenter() {
-    const scale = this.baseScale;
-    const halfW = this.viewportWidth / (2 * scale);
-    const halfH = this.viewportHeight / (2 * scale);
+    const halfW = this.viewportWidth / (2 * this.scaleX);
+    const halfH = this.viewportHeight / (2 * this.scaleY);
     if (this.manifest.image_width > halfW * 2) {
       this.centerX = clamp(this.centerX, halfW, this.manifest.image_width - halfW);
     }
@@ -290,18 +330,16 @@ class TileMap {
   }
 
   worldToScreen(x, y) {
-    const scale = this.baseScale;
     return {
-      x: (x - this.centerX) * scale + this.viewportWidth / 2,
-      y: (y - this.centerY) * scale + this.viewportHeight / 2,
+      x: (x - this.centerX) * this.scaleX + this.viewportWidth / 2,
+      y: (y - this.centerY) * this.scaleY + this.viewportHeight / 2,
     };
   }
 
   screenToWorld(x, y) {
-    const scale = this.baseScale;
     return {
-      x: (x - this.viewportWidth / 2) / scale + this.centerX,
-      y: (y - this.viewportHeight / 2) / scale + this.centerY,
+      x: (x - this.viewportWidth / 2) / this.scaleX + this.centerX,
+      y: (y - this.viewportHeight / 2) / this.scaleY + this.centerY,
     };
   }
 
@@ -331,10 +369,10 @@ class TileMap {
 
   getViewBounds() {
     return {
-      left: this.centerX - this.viewportWidth / (2 * this.baseScale),
-      top: this.centerY - this.viewportHeight / (2 * this.baseScale),
-      right: this.centerX + this.viewportWidth / (2 * this.baseScale),
-      bottom: this.centerY + this.viewportHeight / (2 * this.baseScale),
+      left: this.centerX - this.viewportWidth / (2 * this.scaleX),
+      top: this.centerY - this.viewportHeight / (2 * this.scaleY),
+      right: this.centerX + this.viewportWidth / (2 * this.scaleX),
+      bottom: this.centerY + this.viewportHeight / (2 * this.scaleY),
     };
   }
 
@@ -398,8 +436,14 @@ class TileMap {
       const bottomRight = this.worldToScreen(rect.right, rect.bottom);
       const screenW = bottomRight.x - topLeft.x;
       const screenH = bottomRight.y - topLeft.y;
-      const showRail = screenW >= 64 && screenH >= 34;
-      const showCameras = screenW >= 112 && screenH >= 64;
+      const clippedLeft = clamp(topLeft.x, 0, this.viewportWidth);
+      const clippedTop = clamp(topLeft.y, 0, this.viewportHeight);
+      const clippedRight = clamp(bottomRight.x, 0, this.viewportWidth);
+      const clippedBottom = clamp(bottomRight.y, 0, this.viewportHeight);
+      const visibleW = clippedRight - clippedLeft;
+      const visibleH = clippedBottom - clippedTop;
+      const showRail = visibleW >= 64 && visibleH >= 34;
+      const showCameras = visibleW >= 112 && visibleH >= 64;
       if (!showRail && !showCameras) continue;
       wanted.add(frame.id);
       let annotation = this.visibleAnnotations.get(frame.id);
@@ -413,9 +457,10 @@ class TileMap {
       annotation.style.height = `${screenH}px`;
       annotation.classList.toggle("show-rail", showRail);
       annotation.classList.toggle("show-cameras", showCameras);
-      annotation.style.setProperty("--annotation-pad", `${clamp(Math.round(Math.min(screenW, screenH) * 0.08), 6, 14)}px`);
-      annotation.style.setProperty("--rail-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.095), 11, 16)}px`);
-      annotation.style.setProperty("--camera-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.075), 10, 14)}px`);
+      const labelSize = Math.min(screenW, screenH, visibleW, visibleH);
+      annotation.style.setProperty("--annotation-pad", `${clamp(Math.round(labelSize * 0.08), 6, 14)}px`);
+      annotation.style.setProperty("--rail-font-size", `${clamp(Math.round(labelSize * 0.095), 11, 16)}px`);
+      annotation.style.setProperty("--camera-font-size", `${clamp(Math.round(labelSize * 0.075), 10, 14)}px`);
     }
     for (const [frameId, annotation] of this.visibleAnnotations.entries()) {
       if (wanted.has(frameId)) continue;
@@ -459,15 +504,17 @@ class TileMap {
   }
 
   render() {
-    const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
-    const tileScale = 2 ** (this.currentZoom - tileZoom);
-    const tileWorldSize = this.manifest.tile_size * 2 ** (this.manifest.max_zoom - tileZoom);
-    const zoomDims = this.manifest.zoom_dimensions[String(tileZoom)];
+    this.updateViewTransform();
+    const tileZoom = this.tileZoom;
+    const tileScale = this.tileScale;
+    const tileWorldWidth = this.tileWorldWidth;
+    const tileWorldHeight = this.tileWorldHeight;
+    const zoomDims = this.zoomDims;
     const bounds = this.getViewBounds();
-    const tx0 = clamp(Math.floor(bounds.left / tileWorldSize), 0, zoomDims.tiles_x - 1);
-    const ty0 = clamp(Math.floor(bounds.top / tileWorldSize), 0, zoomDims.tiles_y - 1);
-    const tx1 = clamp(Math.floor(bounds.right / tileWorldSize), 0, zoomDims.tiles_x - 1);
-    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldSize), 0, zoomDims.tiles_y - 1);
+    const tx0 = clamp(Math.floor(bounds.left / tileWorldWidth), 0, zoomDims.tiles_x - 1);
+    const ty0 = clamp(Math.floor(bounds.top / tileWorldHeight), 0, zoomDims.tiles_y - 1);
+    const tx1 = clamp(Math.floor(bounds.right / tileWorldWidth), 0, zoomDims.tiles_x - 1);
+    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldHeight), 0, zoomDims.tiles_y - 1);
     const wanted = new Set();
 
     for (let ty = ty0; ty <= ty1; ty += 1) {
@@ -476,21 +523,25 @@ class TileMap {
         wanted.add(key);
         let tile = this.visibleTiles.get(key);
         if (!tile) {
-          tile = document.createElement("img");
+          tile = document.createElement("div");
           tile.className = "map-tile";
-          tile.alt = "";
-          tile.draggable = false;
-          tile.src = this.manifest.tile_url_template
+          const src = this.manifest.tile_url_template
             .replace("{z}", String(tileZoom))
             .replace("{x}", String(tx))
             .replace("{y}", String(ty));
+          tile.style.backgroundImage = `url("${src}")`;
           this.visibleTiles.set(key, tile);
           this.tilePane.appendChild(tile);
         }
-        const worldLeft = tx * tileWorldSize;
-        const worldTop = ty * tileWorldSize;
+        const worldLeft = tx * tileWorldWidth;
+        const worldTop = ty * tileWorldHeight;
         const screen = this.worldToScreen(worldLeft, worldTop);
-        tile.style.transform = `translate(${screen.x}px, ${screen.y}px) scale(${tileScale})`;
+        const validTileWidth = Math.min(this.manifest.tile_size, this.zoomImageWidth - tx * this.manifest.tile_size);
+        const validTileHeight = Math.min(this.manifest.tile_size, this.zoomImageHeight - ty * this.manifest.tile_size);
+        tile.style.transform = `translate(${screen.x}px, ${screen.y}px)`;
+        tile.style.width = `${validTileWidth * tileScale}px`;
+        tile.style.height = `${validTileHeight * tileScale}px`;
+        tile.style.backgroundSize = `${this.manifest.tile_size * tileScale}px ${this.manifest.tile_size * tileScale}px`;
       }
     }
 
@@ -505,7 +556,7 @@ class TileMap {
     this.drawOverlay();
     this.onViewChange({
       zoom: this.currentZoom,
-      screenPxPerMeter: this.baseScale * this.manifest.layout.px_per_meter_y,
+      screenPxPerMeter: this.scaleY * this.manifest.layout.px_per_meter_y,
     });
 
     if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
@@ -514,14 +565,16 @@ class TileMap {
 
   prefetchTiles() {
     const PAD = 3;
-    const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
-    const tileWorldSize = this.manifest.tile_size * 2 ** (this.manifest.max_zoom - tileZoom);
-    const zoomDims = this.manifest.zoom_dimensions[String(tileZoom)];
+    this.updateViewTransform();
+    const tileZoom = this.tileZoom;
+    const tileWorldWidth = this.tileWorldWidth;
+    const tileWorldHeight = this.tileWorldHeight;
+    const zoomDims = this.zoomDims;
     const bounds = this.getViewBounds();
-    const tx0 = clamp(Math.floor(bounds.left / tileWorldSize) - PAD, 0, zoomDims.tiles_x - 1);
-    const ty0 = clamp(Math.floor(bounds.top / tileWorldSize) - PAD, 0, zoomDims.tiles_y - 1);
-    const tx1 = clamp(Math.floor(bounds.right / tileWorldSize) + PAD, 0, zoomDims.tiles_x - 1);
-    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldSize) + PAD, 0, zoomDims.tiles_y - 1);
+    const tx0 = clamp(Math.floor(bounds.left / tileWorldWidth) - PAD, 0, zoomDims.tiles_x - 1);
+    const ty0 = clamp(Math.floor(bounds.top / tileWorldHeight) - PAD, 0, zoomDims.tiles_y - 1);
+    const tx1 = clamp(Math.floor(bounds.right / tileWorldWidth) + PAD, 0, zoomDims.tiles_x - 1);
+    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldHeight) + PAD, 0, zoomDims.tiles_y - 1);
 
     const urls = [];
     for (let ty = ty0; ty <= ty1; ty++) {
@@ -573,7 +626,7 @@ class TileMap {
       }
     }
 
-    const screenPxPerMeter = scale * this.manifest.layout.px_per_meter_y;
+    const screenPxPerMeter = this.scaleY * this.manifest.layout.px_per_meter_y;
     const tickStep = chooseTickStep(screenPxPerMeter);
     const firstMeter = Math.floor(this.manifest.world.odom_x_min / tickStep) * tickStep;
     const lastMeter = this.manifest.world.odom_x_max + tickStep;
@@ -595,8 +648,8 @@ class TileMap {
       if (frame) {
         const rect = frame.rect_px;
         const topLeft = this.worldToScreen(rect.left, rect.top);
-        const screenW = rect.width * scale;
-        const screenH = rect.height * scale;
+        const screenW = rect.width * this.scaleX;
+        const screenH = rect.height * this.scaleY;
         ctx.strokeStyle = "#ff5b2e";
         ctx.lineWidth = 3;
         ctx.strokeRect(topLeft.x, topLeft.y, screenW, screenH);
