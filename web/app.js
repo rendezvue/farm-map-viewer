@@ -100,7 +100,9 @@ class TileMap {
     this.centerY = manifest.image_height / 2;
     this.pointerAnchor = null;
     this.drag = null;
-    this.renderQueued = false;
+    this.renderFrame = 0;
+    this.destroyed = false;
+    this.handlers = null;
     this.resizeObserver = new ResizeObserver(() => this.queueRender());
     this.resizeObserver.observe(this.container);
     this.bind();
@@ -108,8 +110,24 @@ class TileMap {
   }
 
   destroy() {
+    this.destroyed = true;
     this.resizeObserver.disconnect();
     if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
+    if (this.renderFrame) {
+      cancelAnimationFrame(this.renderFrame);
+      this.renderFrame = 0;
+    }
+    if (this.handlers) {
+      this.container.removeEventListener("wheel", this.handlers.wheel);
+      this.container.removeEventListener("pointerdown", this.handlers.pointerdown);
+      this.container.removeEventListener("pointerenter", this.handlers.pointerenter);
+      this.container.removeEventListener("pointermove", this.handlers.pointermove);
+      this.container.removeEventListener("pointerup", this.handlers.endPointer);
+      this.container.removeEventListener("pointercancel", this.handlers.endPointer);
+      this.container.removeEventListener("pointerleave", this.handlers.pointerleave);
+      this.container.removeEventListener("dblclick", this.handlers.dblclick);
+      this.handlers = null;
+    }
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
     for (const ann of this.visibleAnnotations.values()) ann.remove();
@@ -119,70 +137,74 @@ class TileMap {
   }
 
   bind() {
-    this.container.addEventListener("wheel", (event) => {
-      event.preventDefault();
-      const anchor = this.getAnchorFromEvent(event, { preferStored: true });
-      const delta = event.deltaY > 0 ? -0.22 : 0.22;
-      this.zoomBy(delta, anchor);
-    }, { passive: false });
-
-    this.container.addEventListener("pointerdown", (event) => {
-      this.updatePointerAnchor(event);
-      this.container.setPointerCapture(event.pointerId);
-      this.drag = {
-        id: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        lastX: event.clientX,
-        lastY: event.clientY,
-        moved: false,
-      };
-      this.container.classList.add("is-dragging");
-    });
-
-    this.container.addEventListener("pointerenter", (event) => {
-      this.updatePointerAnchor(event);
-    });
-
-    this.container.addEventListener("pointermove", (event) => {
-      this.updatePointerAnchor(event);
-      if (!this.drag || this.drag.id !== event.pointerId) return;
-      const dx = event.clientX - this.drag.lastX;
-      const dy = event.clientY - this.drag.lastY;
-      this.drag.lastX = event.clientX;
-      this.drag.lastY = event.clientY;
-      if (Math.abs(event.clientX - this.drag.startX) > 3 || Math.abs(event.clientY - this.drag.startY) > 3) {
-        this.drag.moved = true;
-      }
-      this.panBy(dx, dy);
-    });
-
-    const endPointer = (event) => {
-      if (!this.drag || this.drag.id !== event.pointerId) return;
-      const wasClick = !this.drag.moved;
-      this.drag = null;
-      this.container.classList.remove("is-dragging");
-      if (wasClick) {
-        const rect = this.container.getBoundingClientRect();
-        const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
-        const picked = this.pickFrame(world.x, world.y);
-        if (picked) {
-          this.selectedFrameId = picked.id;
-          this.onSelect(picked);
-          this.queueRender();
+    this.handlers = {
+      wheel: (event) => {
+        event.preventDefault();
+        const anchor = this.getAnchorFromEvent(event, { preferStored: true });
+        const delta = event.deltaY > 0 ? -0.22 : 0.22;
+        this.zoomBy(delta, anchor);
+      },
+      pointerdown: (event) => {
+        this.updatePointerAnchor(event);
+        this.container.setPointerCapture(event.pointerId);
+        this.drag = {
+          id: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          moved: false,
+        };
+        this.container.classList.add("is-dragging");
+      },
+      pointerenter: (event) => {
+        this.updatePointerAnchor(event);
+      },
+      pointermove: (event) => {
+        this.updatePointerAnchor(event);
+        if (!this.drag || this.drag.id !== event.pointerId) return;
+        const dx = event.clientX - this.drag.lastX;
+        const dy = event.clientY - this.drag.lastY;
+        this.drag.lastX = event.clientX;
+        this.drag.lastY = event.clientY;
+        if (Math.abs(event.clientX - this.drag.startX) > 3 || Math.abs(event.clientY - this.drag.startY) > 3) {
+          this.drag.moved = true;
         }
-      }
+        this.panBy(dx, dy);
+      },
+      endPointer: (event) => {
+        if (!this.drag || this.drag.id !== event.pointerId) return;
+        const wasClick = !this.drag.moved;
+        this.drag = null;
+        this.container.classList.remove("is-dragging");
+        if (wasClick) {
+          const rect = this.container.getBoundingClientRect();
+          const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
+          const picked = this.pickFrame(world.x, world.y);
+          if (picked) {
+            this.selectedFrameId = picked.id;
+            this.onSelect(picked);
+            this.queueRender();
+          }
+        }
+      },
+      pointerleave: () => {
+        if (!this.drag) this.pointerAnchor = null;
+      },
+      dblclick: (event) => {
+        const anchor = this.getAnchorFromEvent(event, { preferStored: true });
+        this.zoomBy(0.7, anchor);
+      },
     };
 
-    this.container.addEventListener("pointerup", endPointer);
-    this.container.addEventListener("pointercancel", endPointer);
-    this.container.addEventListener("pointerleave", () => {
-      if (!this.drag) this.pointerAnchor = null;
-    });
-    this.container.addEventListener("dblclick", (event) => {
-      const anchor = this.getAnchorFromEvent(event, { preferStored: true });
-      this.zoomBy(0.7, anchor);
-    });
+    this.container.addEventListener("wheel", this.handlers.wheel, { passive: false });
+    this.container.addEventListener("pointerdown", this.handlers.pointerdown);
+    this.container.addEventListener("pointerenter", this.handlers.pointerenter);
+    this.container.addEventListener("pointermove", this.handlers.pointermove);
+    this.container.addEventListener("pointerup", this.handlers.endPointer);
+    this.container.addEventListener("pointercancel", this.handlers.endPointer);
+    this.container.addEventListener("pointerleave", this.handlers.pointerleave);
+    this.container.addEventListener("dblclick", this.handlers.dblclick);
   }
 
   get viewportWidth() { return this.container.clientWidth; }
@@ -259,9 +281,12 @@ class TileMap {
   }
 
   queueRender() {
-    if (this.renderQueued) return;
-    this.renderQueued = true;
-    requestAnimationFrame(() => { this.renderQueued = false; this.render(); });
+    if (this.destroyed || this.renderFrame) return;
+    this.renderFrame = requestAnimationFrame(() => {
+      this.renderFrame = 0;
+      if (this.destroyed) return;
+      this.render();
+    });
   }
 
   worldToScreen(x, y) {
@@ -657,10 +682,13 @@ function renderRailList(manifest, frames, map) {
 }
 
 let currentMap = null;
+let currentSessionLoadToken = 0;
 
-async function loadSession(deviceName, sessionName) {
+async function loadSession(deviceName, sessionName, loadToken = currentSessionLoadToken) {
   const manifest = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/manifest`);
+  if (loadToken !== currentSessionLoadToken) return null;
   const framePayload = await fetchJson(manifest.frames_url);
+  if (loadToken !== currentSessionLoadToken) return null;
   const frames = framePayload.items;
 
   document.getElementById("datasetSummary").textContent =
@@ -672,6 +700,8 @@ async function loadSession(deviceName, sessionName) {
   }
 
   document.getElementById("tilePane").innerHTML = "";
+  document.getElementById("detailPane").innerHTML = "";
+  document.getElementById("annotationPane").innerHTML = "";
   document.getElementById("selectionPill").textContent = "none";
   document.getElementById("selectionMeta").innerHTML = "<p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>";
   document.getElementById("contactSheet").hidden = true;
@@ -703,6 +733,8 @@ async function loadSession(deviceName, sessionName) {
     map.queueRender();
     renderSelection(frames[0]);
   }
+
+  return map;
 }
 
 function renderDeviceTabs(devicesData, onSelect) {
@@ -762,13 +794,15 @@ async function bootstrap() {
   }
 
   async function selectSession(deviceName, sessionName, btn) {
+    const loadToken = ++currentSessionLoadToken;
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
     activeSessionBtn = btn;
     btn.classList.add("is-active");
     summary.textContent = `${deviceName}/${sessionName} 로딩 중...`;
     try {
-      await loadSession(deviceName, sessionName);
+      await loadSession(deviceName, sessionName, loadToken);
     } catch (err) {
+      if (loadToken !== currentSessionLoadToken) return;
       summary.textContent = `로드 실패: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
@@ -777,7 +811,7 @@ async function bootstrap() {
   selectDevice(activeDevice);
 
   const firstDevice = devicesData[0];
-  if (firstDevice.sessions.length > 0) {
+  if (firstDevice.sessions.length > 0 && currentSessionLoadToken === 0) {
     const firstSession = firstDevice.sessions[firstDevice.sessions.length - 1];
     const firstBtn = document.querySelector(`.session-chip[data-session="${firstSession.name}"]`);
     if (firstBtn) await selectSession(firstDevice.name, firstSession.name, firstBtn);
