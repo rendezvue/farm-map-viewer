@@ -56,10 +56,7 @@ function computeDetailSheetSize(frame) {
     maxHeight = Math.max(maxHeight, camera.height || 0);
   }
   if (!maxWidth || !maxHeight) return null;
-  return {
-    width: maxWidth * 2,
-    height: maxHeight * 2,
-  };
+  return { width: maxWidth * 2, height: maxHeight * 2 };
 }
 
 function computeViewerMaxZoom(manifest, frames) {
@@ -110,6 +107,12 @@ class TileMap {
 
   destroy() {
     this.resizeObserver.disconnect();
+    for (const tile of this.visibleTiles.values()) tile.remove();
+    for (const detail of this.visibleDetails.values()) detail.remove();
+    for (const ann of this.visibleAnnotations.values()) ann.remove();
+    this.visibleTiles.clear();
+    this.visibleDetails.clear();
+    this.visibleAnnotations.clear();
   }
 
   bind() {
@@ -179,17 +182,9 @@ class TileMap {
     });
   }
 
-  get viewportWidth() {
-    return this.container.clientWidth;
-  }
-
-  get viewportHeight() {
-    return this.container.clientHeight;
-  }
-
-  get baseScale() {
-    return 2 ** (this.currentZoom - this.manifest.max_zoom);
-  }
+  get viewportWidth() { return this.container.clientWidth; }
+  get viewportHeight() { return this.container.clientHeight; }
+  get baseScale() { return 2 ** (this.currentZoom - this.manifest.max_zoom); }
 
   fitToBounds(render = true) {
     const scaleX = this.viewportWidth / this.manifest.image_width;
@@ -220,10 +215,7 @@ class TileMap {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return this.pointerAnchor;
-    this.pointerAnchor = {
-      x: clamp(x, 0, rect.width),
-      y: clamp(y, 0, rect.height),
-    };
+    this.pointerAnchor = { x: clamp(x, 0, rect.width), y: clamp(y, 0, rect.height) };
     return this.pointerAnchor;
   }
 
@@ -266,10 +258,7 @@ class TileMap {
   queueRender() {
     if (this.renderQueued) return;
     this.renderQueued = true;
-    requestAnimationFrame(() => {
-      this.renderQueued = false;
-      this.render();
-    });
+    requestAnimationFrame(() => { this.renderQueued = false; this.render(); });
   }
 
   worldToScreen(x, y) {
@@ -303,10 +292,7 @@ class TileMap {
       const dist = Math.hypot(dx, dy);
       if (inside) {
         const centerDist = Math.hypot(worldX - rect.center_x, worldY - rect.center_y);
-        if (centerDist < bestInsideDistance) {
-          bestInsideDistance = centerDist;
-          bestInside = frame;
-        }
+        if (centerDist < bestInsideDistance) { bestInsideDistance = centerDist; bestInside = frame; }
       } else if (dist < threshold && dist < bestNearDistance) {
         bestNearDistance = dist;
         bestNear = frame;
@@ -359,19 +345,16 @@ class TileMap {
     const wrapper = document.createElement("div");
     wrapper.className = "frame-annotation";
     wrapper.dataset.frameId = String(frame.id);
-
     const railLabel = document.createElement("div");
     railLabel.className = "frame-annotation-label";
     railLabel.textContent = frame.rail_name;
     wrapper.appendChild(railLabel);
-
     for (const cameraName of CAMERA_ORDER) {
       const label = document.createElement("div");
       label.className = `frame-camera-label ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
       label.textContent = CAMERA_LABELS[cameraName] || cameraName;
       wrapper.appendChild(label);
     }
-
     this.annotationPane.appendChild(wrapper);
     return wrapper;
   }
@@ -379,28 +362,23 @@ class TileMap {
   renderAnnotations(bounds) {
     const padding = 96 / this.baseScale;
     const wanted = new Set();
-
     for (const frame of this.frames) {
       const rect = frame.rect_px;
       if (rect.right < bounds.left - padding || rect.left > bounds.right + padding) continue;
       if (rect.bottom < bounds.top - padding || rect.top > bounds.bottom + padding) continue;
-
       const topLeft = this.worldToScreen(rect.left, rect.top);
       const bottomRight = this.worldToScreen(rect.right, rect.bottom);
       const screenW = bottomRight.x - topLeft.x;
       const screenH = bottomRight.y - topLeft.y;
       const showRail = screenW >= 64 && screenH >= 34;
       const showCameras = screenW >= 112 && screenH >= 64;
-
       if (!showRail && !showCameras) continue;
-
       wanted.add(frame.id);
       let annotation = this.visibleAnnotations.get(frame.id);
       if (!annotation) {
         annotation = this.createFrameAnnotation(frame);
         this.visibleAnnotations.set(frame.id, annotation);
       }
-
       annotation.style.left = `${topLeft.x}px`;
       annotation.style.top = `${topLeft.y}px`;
       annotation.style.width = `${screenW}px`;
@@ -411,7 +389,6 @@ class TileMap {
       annotation.style.setProperty("--rail-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.095), 11, 16)}px`);
       annotation.style.setProperty("--camera-font-size", `${clamp(Math.round(Math.min(screenW, screenH) * 0.075), 10, 14)}px`);
     }
-
     for (const [frameId, annotation] of this.visibleAnnotations.entries()) {
       if (wanted.has(frameId)) continue;
       annotation.remove();
@@ -427,7 +404,6 @@ class TileMap {
       this.visibleDetails.clear();
       return;
     }
-
     const padding = 96 / this.baseScale;
     const wanted = new Set();
     for (const frame of this.frames) {
@@ -447,7 +423,6 @@ class TileMap {
       detail.style.width = `${bottomRight.x - topLeft.x}px`;
       detail.style.height = `${bottomRight.y - topLeft.y}px`;
     }
-
     for (const [frameId, detail] of this.visibleDetails.entries()) {
       if (wanted.has(frameId)) continue;
       detail.remove();
@@ -576,9 +551,7 @@ class TileMap {
 
 async function fetchJson(path) {
   const response = await fetch(path);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${path}`);
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${path}`);
   return response.json();
 }
 
@@ -648,13 +621,26 @@ function renderRailList(manifest, frames, map) {
   }
 }
 
-async function bootstrap() {
-  const manifest = await fetchJson("/api/manifest");
-  const framePayload = await fetchJson("/api/frames");
+let currentMap = null;
+
+async function loadSession(deviceName, sessionName) {
+  const manifest = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/manifest`);
+  const framePayload = await fetchJson(manifest.frames_url);
   const frames = framePayload.items;
 
   document.getElementById("datasetSummary").textContent =
-    `${manifest.dataset_name} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
+    `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
+
+  if (currentMap) {
+    currentMap.destroy();
+    currentMap = null;
+  }
+
+  document.getElementById("tilePane").innerHTML = "";
+  document.getElementById("selectionPill").textContent = "none";
+  document.getElementById("selectionMeta").innerHTML = "<p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>";
+  document.getElementById("contactSheet").hidden = true;
+  document.getElementById("cameraGrid").innerHTML = "";
 
   const zoomValue = document.getElementById("zoomValue");
   const scaleValue = document.getElementById("scaleValue");
@@ -673,17 +659,9 @@ async function bootstrap() {
       scaleValue.textContent = screenPxPerMeter > 0 ? `${(1 / screenPxPerMeter).toFixed(3)} m/px` : "-";
     },
   });
+  currentMap = map;
 
   renderRailList(manifest, frames, map);
-
-  document.getElementById("fitButton").addEventListener("click", () => map.fitToBounds());
-  document.getElementById("zoomInButton").addEventListener("click", () => {
-    map.zoomBy(0.5, { x: map.viewportWidth / 2, y: map.viewportHeight / 2 });
-  });
-  document.getElementById("zoomOutButton").addEventListener("click", () => {
-    map.zoomBy(-0.5, { x: map.viewportWidth / 2, y: map.viewportHeight / 2 });
-  });
-  document.getElementById("reloadButton").addEventListener("click", () => window.location.reload());
 
   if (frames[0]) {
     map.selectedFrameId = frames[0].id;
@@ -692,8 +670,96 @@ async function bootstrap() {
   }
 }
 
-bootstrap().catch((error) => {
+function renderDeviceTabs(devicesData, onSelect) {
+  const tabsEl = document.getElementById("deviceTabs");
+  tabsEl.innerHTML = "";
+  for (const device of devicesData) {
+    const btn = createElement("button", "device-tab", device.name);
+    btn.dataset.device = device.name;
+    btn.addEventListener("click", () => onSelect(device.name));
+    tabsEl.appendChild(btn);
+  }
+}
+
+function renderSessionList(sessions, activeDevice, onSelect) {
+  const listEl = document.getElementById("sessionList");
+  listEl.innerHTML = "";
+  for (const session of sessions) {
+    const btn = createElement("button", "session-chip");
+    btn.dataset.session = session.name;
+    const name = createElement("strong", "", session.name);
+    const meta = createElement("span", "", `rail ${session.rail_count} · ${session.frame_count.toLocaleString()} frames`);
+    btn.append(name, meta);
+    btn.addEventListener("click", () => onSelect(activeDevice, session.name, btn));
+    listEl.appendChild(btn);
+  }
+}
+
+async function bootstrap() {
   const summary = document.getElementById("datasetSummary");
-  summary.textContent = `초기화 실패: ${error instanceof Error ? error.message : String(error)}`;
+
+  let devicesData;
+  try {
+    const payload = await fetchJson("/api/devices");
+    devicesData = payload.devices;
+  } catch (err) {
+    summary.textContent = `초기화 실패: ${err instanceof Error ? err.message : String(err)}`;
+    return;
+  }
+
+  if (!devicesData || devicesData.length === 0) {
+    summary.textContent = "사용 가능한 세션이 없습니다.";
+    return;
+  }
+
+  let activeDevice = devicesData[0].name;
+  let activeSessionBtn = null;
+
+  function selectDevice(deviceName) {
+    activeDevice = deviceName;
+    for (const tab of document.querySelectorAll(".device-tab")) {
+      tab.classList.toggle("is-active", tab.dataset.device === deviceName);
+    }
+    const device = devicesData.find((d) => d.name === deviceName);
+    renderSessionList(device.sessions, deviceName, selectSession);
+    if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
+    activeSessionBtn = null;
+  }
+
+  async function selectSession(deviceName, sessionName, btn) {
+    if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
+    activeSessionBtn = btn;
+    btn.classList.add("is-active");
+    summary.textContent = `${deviceName}/${sessionName} 로딩 중...`;
+    try {
+      await loadSession(deviceName, sessionName);
+    } catch (err) {
+      summary.textContent = `로드 실패: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  renderDeviceTabs(devicesData, selectDevice);
+  selectDevice(activeDevice);
+
+  const firstDevice = devicesData[0];
+  if (firstDevice.sessions.length > 0) {
+    const firstSession = firstDevice.sessions[firstDevice.sessions.length - 1];
+    const firstBtn = document.querySelector(`.session-chip[data-session="${firstSession.name}"]`);
+    if (firstBtn) await selectSession(firstDevice.name, firstSession.name, firstBtn);
+  }
+
+  document.getElementById("fitButton").addEventListener("click", () => currentMap?.fitToBounds());
+  document.getElementById("zoomInButton").addEventListener("click", () => {
+    currentMap?.zoomBy(0.5, { x: currentMap.viewportWidth / 2, y: currentMap.viewportHeight / 2 });
+  });
+  document.getElementById("zoomOutButton").addEventListener("click", () => {
+    currentMap?.zoomBy(-0.5, { x: currentMap.viewportWidth / 2, y: currentMap.viewportHeight / 2 });
+  });
+  document.getElementById("reloadButton").addEventListener("click", () => window.location.reload());
+}
+
+bootstrap().catch((error) => {
+  document.getElementById("datasetSummary").textContent =
+    `초기화 실패: ${error instanceof Error ? error.message : String(error)}`;
   console.error(error);
 });

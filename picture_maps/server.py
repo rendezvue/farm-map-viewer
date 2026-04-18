@@ -14,40 +14,31 @@ from urllib.parse import urlparse
 from .config import BuildConfig
 
 
-IMAGE_ROUTE_RE = re.compile(r"^/api/image/(\d+)/([a-z_]+)\.jpg$")
-CONTACT_ROUTE_RE = re.compile(r"^/api/contact-sheet/(\d+)\.jpg$")
+TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.png$")
+IMAGE_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/image/(\d+)/([a-z_]+)\.jpg$")
+CONTACT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/contact-sheet/(\d+)\.jpg$")
+SESSION_MANIFEST_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/manifest$")
+SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$")
+
+
+class SessionData:
+    def __init__(self, config: BuildConfig):
+        self.config = config
+        self.manifest: dict[str, Any] = json.loads(config.manifest_path.read_text(encoding="utf-8"))
+        self.frames: dict[str, Any] = json.loads(config.frames_path.read_text(encoding="utf-8"))
+        self.server_index: dict[str, Any] = json.loads(config.server_index_path.read_text(encoding="utf-8"))
 
 
 class PictureMapsHandler(SimpleHTTPRequestHandler):
     server_version = "PictureMaps/0.1"
 
-    def __init__(self, *args, web_root: Path, config: BuildConfig, manifest: dict[str, Any], frames: dict[str, Any], server_index: dict[str, Any], **kwargs):
+    def __init__(self, *args, web_root: Path, sessions: dict[tuple[str, str], SessionData], **kwargs):
         self.web_root = web_root
-        self.config = config
-        self.manifest = manifest
-        self.frames = frames
-        self.server_index = server_index
+        self.sessions = sessions
         super().__init__(*args, directory=str(web_root), **kwargs)
 
     def log_message(self, format: str, *args) -> None:
         return
-
-    def cache_control_for_path(self, path: str) -> str | None:
-        if (
-            path == "/"
-            or path.endswith((".html", ".js", ".css"))
-            or path.startswith("/tiles/")
-            or path.startswith("/api/")
-        ):
-            return "no-store"
-        return None
-
-    def end_headers(self) -> None:
-        parsed = urlparse(self.path)
-        cache_control = self.cache_control_for_path(parsed.path)
-        if cache_control:
-            self.send_header("Cache-Control", cache_control)
-        super().end_headers()
 
     def do_GET(self) -> None:
         self.handle_request(send_body=True)
@@ -59,25 +50,62 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/api/manifest":
-            self.serve_json(self.manifest, send_body=send_body)
+        if path == "/api/devices":
+            devices: dict[str, list[dict[str, Any]]] = {}
+            for (device, session), data in sorted(self.sessions.items()):
+                m = data.manifest
+                devices.setdefault(device, []).append({
+                    "name": session,
+                    "rail_count": m["summary"]["rail_count"],
+                    "frame_count": m["summary"]["frame_count"],
+                    "generated_at": m.get("generated_at"),
+                })
+            result = [{"name": d, "sessions": sessions} for d, sessions in sorted(devices.items())]
+            self.serve_json({"devices": result}, send_body=send_body)
             return
-        if path == "/api/frames":
-            self.serve_json(self.frames, send_body=send_body)
+
+        manifest_match = SESSION_MANIFEST_RE.match(path)
+        if manifest_match:
+            device, session = manifest_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            self.serve_json(data.manifest, send_body=send_body)
             return
-        if path.startswith("/tiles/"):
-            rel = path[len("/tiles/") :]
-            tile_path = self.config.tiles_dir / rel
+
+        frames_match = SESSION_FRAMES_RE.match(path)
+        if frames_match:
+            device, session = frames_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            self.serve_json(data.frames, send_body=send_body)
+            return
+
+        tile_match = TILE_RE.match(path)
+        if tile_match:
+            device, session, z, x, y = tile_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            tile_path = data.config.tiles_dir / z / x / f"{y}.png"
             if tile_path.exists():
                 self.serve_file(tile_path, send_body=send_body)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Tile not found")
             return
 
-        image_match = IMAGE_ROUTE_RE.match(path)
+        image_match = IMAGE_RE.match(path)
         if image_match:
-            frame_id, camera_name = image_match.groups()
-            frame = self.server_index["frames"].get(frame_id)
+            device, session, frame_id, camera_name = image_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            frame = data.server_index["frames"].get(frame_id)
             if not frame:
                 self.send_error(HTTPStatus.NOT_FOUND, "Frame not found")
                 return
@@ -88,10 +116,14 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             self.serve_file(Path(camera["path"]), send_body=send_body)
             return
 
-        contact_match = CONTACT_ROUTE_RE.match(path)
+        contact_match = CONTACT_RE.match(path)
         if contact_match:
-            frame_id = contact_match.group(1)
-            frame = self.server_index["frames"].get(frame_id)
+            device, session, frame_id = contact_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            frame = data.server_index["frames"].get(frame_id)
             if not frame:
                 self.send_error(HTTPStatus.NOT_FOUND, "Frame not found")
                 return
@@ -103,22 +135,23 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         elif path.startswith("/api/"):
             self.send_error(HTTPStatus.NOT_FOUND, "API not found")
             return
+
         if send_body:
             super().do_GET()
         else:
             super().do_HEAD()
 
     def translate_path(self, path: str) -> str:
-        root = self.web_root
         parsed_path = urlparse(path).path
         normalized = posixpath.normpath(parsed_path).lstrip("/")
-        return str(root / normalized)
+        return str(self.web_root / normalized)
 
     def serve_json(self, payload: dict[str, Any], *, send_body: bool = True) -> None:
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if send_body:
             self.wfile.write(raw)
@@ -137,20 +170,17 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
 
 
-def serve(config: BuildConfig, host: str, port: int, web_root: Path) -> None:
-    manifest = json.loads(config.manifest_path.read_text(encoding="utf-8"))
-    frames = json.loads(config.frames_path.read_text(encoding="utf-8"))
-    server_index = json.loads(config.server_index_path.read_text(encoding="utf-8"))
-    handler = partial(
-        PictureMapsHandler,
-        web_root=web_root,
-        config=config,
-        manifest=manifest,
-        frames=frames,
-        server_index=server_index,
-    )
+def serve(
+    sessions: dict[tuple[str, str], SessionData],
+    lock: "threading.Lock",
+    host: str,
+    port: int,
+    web_root: Path,
+) -> None:
+    import threading
+    handler = partial(PictureMapsHandler, web_root=web_root, sessions=sessions)
     with ThreadingHTTPServer((host, port), handler) as httpd:
-        print(f"Picture Maps server listening on http://{host}:{port}")
-        print(f"Dataset: {config.dataset_dir}")
-        print(f"Build:   {config.output_dir}")
+        print(f"Picture Maps server listening on http://{host}:{port}", flush=True)
+        for device, session in sorted(sessions):
+            print(f"  {device}/{session}", flush=True)
         httpd.serve_forever()

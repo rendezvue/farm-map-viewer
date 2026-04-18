@@ -137,6 +137,76 @@ button {
   font-weight: 700;
 }
 
+.panel-session {
+  flex-shrink: 0;
+}
+
+.device-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.device-tab {
+  padding: 8px 14px;
+  border: 1px solid rgba(24, 49, 38, 0.15);
+  background: var(--panel-strong);
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.device-tab.is-active {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+
+.session-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.session-chip {
+  padding: 10px 12px;
+  border: 1px solid rgba(24, 49, 38, 0.11);
+  background: var(--panel-strong);
+  color: var(--text);
+  border-radius: 14px;
+  text-align: left;
+}
+
+.session-chip strong,
+.session-chip span {
+  display: block;
+}
+
+.session-chip strong {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.session-chip span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.session-chip.is-active {
+  background: linear-gradient(180deg, #215f48 0%, #183e31 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.session-chip.is-active span {
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .rail-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

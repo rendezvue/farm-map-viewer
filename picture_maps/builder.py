@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 
+import torch
+import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
 from .config import BuildConfig
@@ -19,6 +22,8 @@ try:
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
 except AttributeError:
     RESAMPLE_LANCZOS = Image.LANCZOS
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], *, fill: str | None = None, outline: str | None = None, radius: int = 0, width: int = 1) -> None:
@@ -67,20 +72,68 @@ def draw_center_label(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
     draw_shadow_text(draw, x, y, text, fill=fill, shadow=shadow)
 
 
+def load_image_tensor(path: str, device: torch.device) -> torch.Tensor:
+    with Image.open(path) as img:
+        return TF.to_tensor(img.convert("RGB")).to(device)
+
+
+def render_contact_sheet_gpu(
+    frame: dict[str, Any],
+    destination: Path,
+    cell_width: int,
+    cell_height: int,
+    device: torch.device,
+) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    sub_w = cell_width // 2
+    sub_h = cell_height // 2
+    bg = torch.tensor([0.918, 0.902, 0.855], device=device).view(3, 1, 1)
+    sheet = bg.expand(3, cell_height, cell_width).clone()
+
+    positions = {
+        "front_left": (0, 0),
+        "front_right": (sub_w, 0),
+        "rear": (0, sub_h),
+        "side": (sub_w, sub_h),
+    }
+    for camera_name in CAMERA_ORDER:
+        x, y = positions[camera_name]
+        info = frame["cameras"].get(camera_name)
+        if info:
+            try:
+                t = load_image_tensor(info["path"], device)
+                t = t.unsqueeze(0)
+                t = F.interpolate(t, size=(sub_h, sub_w), mode="bilinear", align_corners=False, antialias=True)
+                sheet[:, y:y + sub_h, x:x + sub_w] = t.squeeze(0)
+            except Exception:
+                pass
+
+    arr = (sheet.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
+    Image.fromarray(arr).save(destination, format="JPEG", quality=84)
+
+
 def build_dataset(config: BuildConfig) -> dict[str, Any]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     config.tiles_dir.mkdir(parents=True, exist_ok=True)
     config.cells_dir.mkdir(parents=True, exist_ok=True)
 
+    device_name = config.dataset_dir.parent.name
+    session_name = config.dataset_dir.name
+
+    print(f"  [{device_name}/{session_name}] scanning ...", flush=True)
     dataset = scan_dataset(config.dataset_dir, config.rail_spacing_m)
     layout = compute_layout(config, dataset)
-    public_frames, server_index = build_contact_sheets(config, dataset, layout)
+    print(f"  [{device_name}/{session_name}] building {len(dataset['frames'])} frames on {DEVICE} ...", flush=True)
+    public_frames, server_index = build_contact_sheets(config, dataset, layout, device_name, session_name)
+    print(f"  [{device_name}/{session_name}] building tile pyramid ...", flush=True)
     zooms = build_tile_pyramid(config, public_frames, layout)
 
     manifest = {
-        "title": f"Picture Maps - {config.dataset_dir.name}",
+        "title": f"Picture Maps - {session_name}",
         "dataset_dir": str(config.dataset_dir),
-        "dataset_name": config.dataset_dir.name,
+        "dataset_name": session_name,
+        "device_name": device_name,
+        "session_name": session_name,
         "dataset_key": config.dataset_key,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "tile_size": config.tile_size,
@@ -89,8 +142,8 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
         "image_width": layout["width_px"],
         "image_height": layout["height_px"],
         "background": config.background,
-        "tile_url_template": "/tiles/{z}/{x}/{y}.png",
-        "frames_url": "/api/frames",
+        "tile_url_template": f"/tiles/{device_name}/{session_name}/{{z}}/{{x}}/{{y}}.png",
+        "frames_url": f"/api/devices/{device_name}/sessions/{session_name}/frames",
         "rails": dataset["rails"],
         "summary": {
             "rail_count": len(dataset["rails"]),
@@ -162,58 +215,21 @@ def frame_rect_px(frame: dict[str, Any], dataset: dict[str, Any], layout: dict[s
     }
 
 
-def render_missing_tile(size: tuple[int, int], label: str) -> Image.Image:
-    image = Image.new("RGB", size, "#d9d2c3")
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, size[0] - 1, size[1] - 1), outline="#b39a74", width=2)
-    return image
-
-
-def render_contact_sheet(frame: dict[str, Any], destination: Path, cell_width: int, cell_height: int) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    background = Image.new("RGB", (cell_width, cell_height), "#ebe6da")
-    draw = ImageDraw.Draw(background)
-    draw_panel(draw, (0, 0, cell_width - 1, cell_height - 1), radius=18, outline="#d6ccb8", width=2)
-
-    sub_width = cell_width // 2
-    sub_height = cell_height // 2
-    positions = {
-        "front_left": (0, 0),
-        "front_right": (sub_width, 0),
-        "rear": (0, sub_height),
-        "side": (sub_width, sub_height),
-    }
-    for camera_name in CAMERA_ORDER:
-        left, top = positions[camera_name]
-        info = frame["cameras"].get(camera_name)
-        if info:
-            with Image.open(info["path"]) as image:
-                tile = ImageOps.fit(image.convert("RGB"), (sub_width, sub_height), method=RESAMPLE_LANCZOS)
-        else:
-            tile = render_missing_tile((sub_width, sub_height), camera_name)
-        background.paste(tile, (left, top))
-        draw.rectangle((left, top, left + sub_width - 1, top + sub_height - 1), outline="#f6f1e7", width=1)
-    background.save(destination, format="JPEG", quality=84)
-
-
-def render_contact_sheet_job(job: tuple[dict[str, Any], Path, int, int]) -> None:
-    frame, destination, cell_width, cell_height = job
-    render_contact_sheet(frame, destination, cell_width, cell_height)
-
-
 def build_contact_sheets(
     config: BuildConfig,
     dataset: dict[str, Any],
     layout: dict[str, Any],
+    device_name: str,
+    session_name: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     public_frames: list[dict[str, Any]] = []
     server_frames: dict[str, Any] = {}
-    render_jobs: list[tuple[dict[str, Any], Path, int, int]] = []
 
+    frames_with_paths: list[tuple[dict[str, Any], Path]] = []
     for frame in dataset["frames"]:
         rect = frame_rect_px(frame, dataset, layout)
         cell_path = config.cells_dir / f'{frame["id"]:05d}.jpg'
-        render_jobs.append((frame, cell_path, layout["cell_width"], layout["cell_height"]))
+        frames_with_paths.append((frame, cell_path))
 
         cameras_public: dict[str, Any] = {}
         cameras_private: dict[str, Any] = {}
@@ -222,7 +238,7 @@ def build_contact_sheets(
                 "filename": info["filename"],
                 "width": info["width"],
                 "height": info["height"],
-                "url": f'/api/image/{frame["id"]}/{camera_name}.jpg',
+                "url": f'/api/devices/{device_name}/sessions/{session_name}/image/{frame["id"]}/{camera_name}.jpg',
             }
             cameras_private[camera_name] = {
                 "path": info["path"],
@@ -241,7 +257,7 @@ def build_contact_sheets(
                 "odom_source": frame.get("odom_source"),
                 "seq_index": frame["seq_index"],
                 "rect_px": rect,
-                "contact_sheet_url": f'/api/contact-sheet/{frame["id"]}.jpg',
+                "contact_sheet_url": f'/api/devices/{device_name}/sessions/{session_name}/contact-sheet/{frame["id"]}.jpg',
                 "cameras": cameras_public,
             }
         )
@@ -250,99 +266,95 @@ def build_contact_sheets(
             "cameras": cameras_private,
         }
 
-    if render_jobs:
-        max_workers = min(8, os.cpu_count() or 4)
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            list(executor.map(render_contact_sheet_job, render_jobs))
+    # GPU로 contact sheet 병렬 생성
+    def render_job(args: tuple[dict[str, Any], Path]) -> None:
+        frame, cell_path = args
+        if not cell_path.exists():
+            render_contact_sheet_gpu(frame, cell_path, layout["cell_width"], layout["cell_height"], DEVICE)
+
+    max_workers = min(8, os.cpu_count() or 4)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        list(executor.map(render_job, frames_with_paths))
 
     return public_frames, {"dataset_dir": str(config.dataset_dir), "frames": server_frames}
 
 
-@lru_cache(maxsize=128)
-def load_rgb_image(path_str: str) -> Image.Image:
-    with Image.open(path_str) as image:
-        return image.convert("RGB")
-
-
-def blank_tile(size: int, background: str) -> Image.Image:
-    return Image.new("RGB", (size, size), ImageColor.getrgb(background))
-
-
-def save_tile(image: Image.Image, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(path, format="PNG", compress_level=6)
-
-
 def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout: dict[str, Any]) -> dict[str, Any]:
-    max_dimension = max(layout["width_px"], layout["height_px"], config.tile_size)
+    W = layout["width_px"]
+    H = layout["height_px"]
+    bg_rgb = ImageColor.getrgb(config.background)
+    bg = torch.tensor([c / 255.0 for c in bg_rgb], dtype=torch.float32, device=DEVICE).view(3, 1, 1)
+
+    # 전체 캔버스를 GPU 텐서로 구성
+    canvas = bg.expand(3, H, W).clone()
+
+    for frame in frames:
+        cell_path = config.cells_dir / f'{frame["id"]:05d}.jpg'
+        if not cell_path.exists():
+            continue
+        with Image.open(cell_path) as img:
+            t = TF.to_tensor(img.convert("RGB")).to(DEVICE)
+        rect = frame["rect_px"]
+        t_h = rect["bottom"] - rect["top"]
+        t_w = rect["right"] - rect["left"]
+        if t.shape[1] != t_h or t.shape[2] != t_w:
+            t = F.interpolate(t.unsqueeze(0), size=(t_h, t_w), mode="bilinear", align_corners=False, antialias=True).squeeze(0)
+        canvas[:, rect["top"]:rect["bottom"], rect["left"]:rect["right"]] = t
+
+    max_dimension = max(W, H, config.tile_size)
     max_zoom = max(0, math.ceil(math.log2(max_dimension / config.tile_size)))
 
-    tiles_x = math.ceil(layout["width_px"] / config.tile_size)
-    tiles_y = math.ceil(layout["height_px"] / config.tile_size)
+    tiles_x = math.ceil(W / config.tile_size)
+    tiles_y = math.ceil(H / config.tile_size)
     level_dimensions: dict[int, tuple[int, int]] = {max_zoom: (tiles_x, tiles_y)}
 
-    overlaps: dict[tuple[int, int], list[dict[str, Any]]] = {}
-    for frame in frames:
-        rect = frame["rect_px"]
-        tx0 = rect["left"] // config.tile_size
-        tx1 = (rect["right"] - 1) // config.tile_size
-        ty0 = rect["top"] // config.tile_size
-        ty1 = (rect["bottom"] - 1) // config.tile_size
-        for tx in range(tx0, tx1 + 1):
-            for ty in range(ty0, ty1 + 1):
-                overlaps.setdefault((tx, ty), []).append(frame)
-
+    # 최대 줌 타일 저장
+    ts = config.tile_size
     for ty in range(tiles_y):
         for tx in range(tiles_x):
-            canvas = blank_tile(config.tile_size, config.background)
-            tile_left = tx * config.tile_size
-            tile_top = ty * config.tile_size
-            for frame in overlaps.get((tx, ty), []):
-                rect = frame["rect_px"]
-                inter_left = max(tile_left, rect["left"])
-                inter_top = max(tile_top, rect["top"])
-                inter_right = min(tile_left + config.tile_size, rect["right"])
-                inter_bottom = min(tile_top + config.tile_size, rect["bottom"])
-                if inter_left >= inter_right or inter_top >= inter_bottom:
-                    continue
-                cell = load_rgb_image(str(config.cells_dir / f'{frame["id"]:05d}.jpg'))
-                crop = cell.crop(
-                    (
-                        inter_left - rect["left"],
-                        inter_top - rect["top"],
-                        inter_right - rect["left"],
-                        inter_bottom - rect["top"],
-                    )
-                )
-                canvas.paste(crop, (inter_left - tile_left, inter_top - tile_top))
-            save_tile(canvas, config.tiles_dir / str(max_zoom) / str(tx) / f"{ty}.png")
+            x0, y0 = tx * ts, ty * ts
+            x1 = min(x0 + ts, W)
+            y1 = min(y0 + ts, H)
+            tile = canvas[:, y0:y1, x0:x1]
+            if tile.shape[1] < ts or tile.shape[2] < ts:
+                pad = torch.zeros(3, ts, ts, device=DEVICE)
+                pad[:, :tile.shape[1], :tile.shape[2]] = tile
+                tile = pad
+            arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
+            path = config.tiles_dir / str(max_zoom) / str(tx) / f"{ty}.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            Image.fromarray(arr).save(path, format="PNG", compress_level=6)
 
+    # 줌 레벨 다운샘플링
+    current_canvas = canvas.unsqueeze(0)  # (1, 3, H, W)
     for zoom in range(max_zoom - 1, -1, -1):
         child_tiles_x, child_tiles_y = level_dimensions[zoom + 1]
         parent_tiles_x = math.ceil(child_tiles_x / 2)
         parent_tiles_y = math.ceil(child_tiles_y / 2)
         level_dimensions[zoom] = (parent_tiles_x, parent_tiles_y)
+
+        new_H = parent_tiles_y * ts
+        new_W = parent_tiles_x * ts
+        downsampled = F.interpolate(
+            current_canvas,
+            size=(new_H, new_W),
+            mode="bilinear",
+            align_corners=False,
+            antialias=True,
+        )
+        current_canvas = downsampled
+
+        zoom_canvas = downsampled.squeeze(0)
         for ty in range(parent_tiles_y):
             for tx in range(parent_tiles_x):
-                canvas = Image.new("RGB", (config.tile_size * 2, config.tile_size * 2), ImageColor.getrgb(config.background))
-                for child_dx in range(2):
-                    for child_dy in range(2):
-                        child_x = tx * 2 + child_dx
-                        child_y = ty * 2 + child_dy
-                        if child_x >= child_tiles_x or child_y >= child_tiles_y:
-                            continue
-                        child_path = config.tiles_dir / str(zoom + 1) / str(child_x) / f"{child_y}.png"
-                        if not child_path.exists():
-                            continue
-                        with Image.open(child_path) as child_tile:
-                            canvas.paste(child_tile.convert("RGB"), (child_dx * config.tile_size, child_dy * config.tile_size))
-                parent = canvas.resize((config.tile_size, config.tile_size), RESAMPLE_LANCZOS)
-                save_tile(parent, config.tiles_dir / str(zoom) / str(tx) / f"{ty}.png")
+                x0, y0 = tx * ts, ty * ts
+                tile = zoom_canvas[:, y0:y0 + ts, x0:x0 + ts]
+                arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
+                path = config.tiles_dir / str(zoom) / str(tx) / f"{ty}.png"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.fromarray(arr).save(path, format="PNG", compress_level=6)
 
     return {
-        str(zoom): {
-            "tiles_x": dims[0],
-            "tiles_y": dims[1],
-        }
+        str(zoom): {"tiles_x": dims[0], "tiles_y": dims[1]}
         for zoom, dims in sorted(level_dimensions.items())
     }
