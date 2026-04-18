@@ -145,6 +145,13 @@ def _watcher_process(
                     print(f"[watcher] {device}/{session} ready", flush=True)
                 except Exception as exc:
                     print(f"[watcher] build failed {device}/{session}: {exc}", flush=True)
+                finally:
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
         except Exception as exc:
             print(f"[watcher] scan error: {exc}", flush=True)
 
@@ -186,9 +193,18 @@ class SessionWatcher:
         self._reader = threading.Thread(target=self._queue_reader, daemon=True, name="watcher-queue-reader")
 
     def start(self) -> None:
+        import atexit
         self._process.start()
         self._reader.start()
+        atexit.register(self.stop)
         print(f"Session watcher started (pid={self._process.pid}, scan every {self.scan_interval}s, cooldown {COOLDOWN_HOURS}h)", flush=True)
+
+    def stop(self) -> None:
+        if self._process.is_alive():
+            self._process.terminate()
+            self._process.join(timeout=3)
+            if self._process.is_alive():
+                self._process.kill()
 
     def _queue_reader(self) -> None:
         from .server import SessionData

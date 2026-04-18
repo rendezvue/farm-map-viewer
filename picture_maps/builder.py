@@ -26,6 +26,21 @@ except AttributeError:
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _free_cuda() -> None:
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def _pick_device() -> torch.device:
+    if not torch.cuda.is_available():
+        return torch.device("cpu")
+    free, total = torch.cuda.mem_get_info()
+    # require at least 1 GB free before using GPU
+    if free < 1 * 1024 ** 3:
+        return torch.device("cpu")
+    return torch.device("cuda")
+
+
 def draw_panel(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], *, fill: str | None = None, outline: str | None = None, radius: int = 0, width: int = 1) -> None:
     if hasattr(draw, "rounded_rectangle"):
         draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
@@ -82,7 +97,7 @@ def render_contact_sheet_gpu(
     destination: Path,
     cell_width: int,
     cell_height: int,
-    device: torch.device,
+    device: torch.device = DEVICE,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     sub_w = cell_width // 2
@@ -123,10 +138,11 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
     print(f"  [{device_name}/{session_name}] scanning ...", flush=True)
     dataset = scan_dataset(config.dataset_dir, config.rail_spacing_m)
     layout = compute_layout(config, dataset)
-    print(f"  [{device_name}/{session_name}] building {len(dataset['frames'])} frames on {DEVICE} ...", flush=True)
-    public_frames, server_index = build_contact_sheets(config, dataset, layout, device_name, session_name)
+    device = _pick_device()
+    print(f"  [{device_name}/{session_name}] building {len(dataset['frames'])} frames on {device} ...", flush=True)
+    public_frames, server_index = build_contact_sheets(config, dataset, layout, device_name, session_name, device=device)
     print(f"  [{device_name}/{session_name}] building tile pyramid ...", flush=True)
-    zooms = build_tile_pyramid(config, public_frames, layout)
+    zooms = build_tile_pyramid(config, public_frames, layout, device=device)
 
     manifest = {
         "title": f"Picture Maps - {session_name}",
@@ -221,6 +237,7 @@ def build_contact_sheets(
     layout: dict[str, Any],
     device_name: str,
     session_name: str,
+    device: torch.device = DEVICE,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     public_frames: list[dict[str, Any]] = []
     server_frames: dict[str, Any] = {}
@@ -270,7 +287,7 @@ def build_contact_sheets(
     def render_job(args: tuple[dict[str, Any], Path]) -> None:
         frame, cell_path = args
         if not cell_path.exists():
-            render_contact_sheet_gpu(frame, cell_path, layout["cell_width"], layout["cell_height"], DEVICE)
+            render_contact_sheet_gpu(frame, cell_path, layout["cell_width"], layout["cell_height"], device)
 
     max_workers = min(8, os.cpu_count() or 4)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -279,13 +296,12 @@ def build_contact_sheets(
     return public_frames, {"dataset_dir": str(config.dataset_dir), "frames": server_frames}
 
 
-def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout: dict[str, Any]) -> dict[str, Any]:
+def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout: dict[str, Any], device: torch.device = DEVICE) -> dict[str, Any]:
     W = layout["width_px"]
     H = layout["height_px"]
     bg_rgb = ImageColor.getrgb(config.background)
-    bg = torch.tensor([c / 255.0 for c in bg_rgb], dtype=torch.float32, device=DEVICE).view(3, 1, 1)
+    bg = torch.tensor([c / 255.0 for c in bg_rgb], dtype=torch.float32, device=device).view(3, 1, 1)
 
-    # 전체 캔버스를 GPU 텐서로 구성
     canvas = bg.expand(3, H, W).clone()
 
     for frame in frames:
@@ -293,13 +309,14 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
         if not cell_path.exists():
             continue
         with Image.open(cell_path) as img:
-            t = TF.to_tensor(img.convert("RGB")).to(DEVICE)
+            t = TF.to_tensor(img.convert("RGB")).to(device)
         rect = frame["rect_px"]
         t_h = rect["bottom"] - rect["top"]
         t_w = rect["right"] - rect["left"]
         if t.shape[1] != t_h or t.shape[2] != t_w:
             t = F.interpolate(t.unsqueeze(0), size=(t_h, t_w), mode="bilinear", align_corners=False, antialias=True).squeeze(0)
         canvas[:, rect["top"]:rect["bottom"], rect["left"]:rect["right"]] = t
+        del t
 
     max_dimension = max(W, H, config.tile_size)
     max_zoom = max(0, math.ceil(math.log2(max_dimension / config.tile_size)))
@@ -308,7 +325,6 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
     tiles_y = math.ceil(H / config.tile_size)
     level_dimensions: dict[int, tuple[int, int]] = {max_zoom: (tiles_x, tiles_y)}
 
-    # 최대 줌 타일 저장
     ts = config.tile_size
     for ty in range(tiles_y):
         for tx in range(tiles_x):
@@ -317,7 +333,7 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
             y1 = min(y0 + ts, H)
             tile = canvas[:, y0:y1, x0:x1]
             if tile.shape[1] < ts or tile.shape[2] < ts:
-                pad = torch.zeros(3, ts, ts, device=DEVICE)
+                pad = torch.zeros(3, ts, ts, device=device)
                 pad[:, :tile.shape[1], :tile.shape[2]] = tile
                 tile = pad
             arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
@@ -325,8 +341,10 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
             path.parent.mkdir(parents=True, exist_ok=True)
             Image.fromarray(arr).save(path, format="JPEG", quality=82)
 
-    # 줌 레벨 다운샘플링
-    current_canvas = canvas.unsqueeze(0)  # (1, 3, H, W)
+    current_canvas = canvas.unsqueeze(0)
+    del canvas
+    _free_cuda()
+
     for zoom in range(max_zoom - 1, -1, -1):
         child_tiles_x, child_tiles_y = level_dimensions[zoom + 1]
         parent_tiles_x = math.ceil(child_tiles_x / 2)
@@ -342,6 +360,7 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
             align_corners=False,
             antialias=True,
         )
+        del current_canvas
         current_canvas = downsampled
 
         zoom_canvas = downsampled.squeeze(0)
@@ -353,6 +372,9 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
                 path = config.tiles_dir / str(zoom) / str(tx) / f"{ty}.jpg"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 Image.fromarray(arr).save(path, format="JPEG", quality=82)
+
+    del current_canvas
+    _free_cuda()
 
     return {
         str(zoom): {"tiles_x": dims[0], "tiles_y": dims[1]}

@@ -88,6 +88,8 @@ class TileMap {
     this.visibleTiles = new Map();
     this.visibleDetails = new Map();
     this.visibleAnnotations = new Map();
+    this.prefetchedUrls = new Set();
+    this.prefetchTimer = null;
     this.selectedFrameId = null;
     this.minZoom = manifest.min_zoom;
     this.maxZoom = Math.max(maxZoom || manifest.max_zoom, manifest.max_zoom);
@@ -107,6 +109,7 @@ class TileMap {
 
   destroy() {
     this.resizeObserver.disconnect();
+    if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
     for (const ann of this.visibleAnnotations.values()) ann.remove();
@@ -479,6 +482,38 @@ class TileMap {
       zoom: this.currentZoom,
       screenPxPerMeter: this.baseScale * this.manifest.layout.px_per_meter_y,
     });
+
+    if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
+    this.prefetchTimer = setTimeout(() => this.prefetchTiles(), 150);
+  }
+
+  prefetchTiles() {
+    const PAD = 3;
+    const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
+    const tileWorldSize = this.manifest.tile_size * 2 ** (this.manifest.max_zoom - tileZoom);
+    const zoomDims = this.manifest.zoom_dimensions[String(tileZoom)];
+    const bounds = this.getViewBounds();
+    const tx0 = clamp(Math.floor(bounds.left / tileWorldSize) - PAD, 0, zoomDims.tiles_x - 1);
+    const ty0 = clamp(Math.floor(bounds.top / tileWorldSize) - PAD, 0, zoomDims.tiles_y - 1);
+    const tx1 = clamp(Math.floor(bounds.right / tileWorldSize) + PAD, 0, zoomDims.tiles_x - 1);
+    const ty1 = clamp(Math.floor(bounds.bottom / tileWorldSize) + PAD, 0, zoomDims.tiles_y - 1);
+
+    const urls = [];
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const key = `${tileZoom}/${tx}/${ty}`;
+        if (this.visibleTiles.has(key) || this.prefetchedUrls.has(key)) continue;
+        this.prefetchedUrls.add(key);
+        urls.push(this.manifest.tile_url_template
+          .replace("{z}", String(tileZoom))
+          .replace("{x}", String(tx))
+          .replace("{y}", String(ty)));
+      }
+    }
+
+    for (const url of urls) {
+      fetch(url, { priority: "low" }).catch(() => {});
+    }
   }
 
   drawOverlay() {

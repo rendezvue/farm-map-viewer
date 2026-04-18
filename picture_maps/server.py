@@ -50,6 +50,22 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == "/api/debug":
+            debug_info = {}
+            for (device, session), data in sorted(self.sessions.items()):
+                key = f"{device}/{session}"
+                tiles_dir = str(data.config.tiles_dir)
+                sample = data.config.tiles_dir / "3" / "0" / "0.jpg"
+                debug_info[key] = {
+                    "tiles_dir": tiles_dir,
+                    "tiles_dir_exists": data.config.tiles_dir.exists(),
+                    "sample_tile_exists": sample.exists(),
+                    "dataset_dir": str(data.config.dataset_dir),
+                    "dataset_key": data.config.dataset_key,
+                }
+            self.serve_json(debug_info, send_body=send_body)
+            return
+
         if path == "/api/devices":
             devices: dict[str, list[dict[str, Any]]] = {}
             for (device, session), data in sorted(self.sessions.items()):
@@ -91,9 +107,9 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             if not data:
                 self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
                 return
-            tile_path = data.config.tiles_dir / z / x / f"{y}.png"
+            tile_path = data.config.tiles_dir / z / x / f"{y}.jpg"
             if tile_path.exists():
-                self.serve_file(tile_path, send_body=send_body)
+                self.serve_file(tile_path, send_body=send_body, cache_seconds=3600)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Tile not found")
             return
@@ -113,7 +129,7 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             if not camera:
                 self.send_error(HTTPStatus.NOT_FOUND, "Camera not found")
                 return
-            self.serve_file(Path(camera["path"]), send_body=send_body)
+            self.serve_file(Path(camera["path"]), send_body=send_body, cache_seconds=3600)
             return
 
         contact_match = CONTACT_RE.match(path)
@@ -127,7 +143,7 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             if not frame:
                 self.send_error(HTTPStatus.NOT_FOUND, "Frame not found")
                 return
-            self.serve_file(Path(frame["contact_sheet_path"]), send_body=send_body)
+            self.serve_file(Path(frame["contact_sheet_path"]), send_body=send_body, cache_seconds=3600)
             return
 
         if path == "/":
@@ -156,15 +172,28 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         if send_body:
             self.wfile.write(raw)
 
-    def serve_file(self, path: Path, *, send_body: bool = True) -> None:
+    def serve_file(self, path: Path, *, send_body: bool = True, cache_seconds: int = 0) -> None:
         if not path.exists() or not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND, "File not found")
             return
         mime_type, _ = mimetypes.guess_type(str(path))
+        stat = path.stat()
+        etag = f'"{int(stat.st_mtime)}-{stat.st_size}"'
+
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.end_headers()
+            return
+
         data = path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mime_type or "application/octet-stream")
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("ETag", etag)
+        if cache_seconds > 0:
+            self.send_header("Cache-Control", f"public, max-age={cache_seconds}")
+        else:
+            self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if send_body:
             self.wfile.write(data)
