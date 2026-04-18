@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 from .config import BuildConfig
 
 
-TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.png$")
+TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.(png|jpg)$")
 IMAGE_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/image/(\d+)/([a-z_]+)\.jpg$")
 CONTACT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/contact-sheet/(\d+)\.jpg$")
 SESSION_MANIFEST_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/manifest$")
@@ -86,7 +86,7 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
 
         tile_match = TILE_RE.match(path)
         if tile_match:
-            device, session, z, x, y = tile_match.groups()
+            device, session, z, x, y, _ext = tile_match.groups()
             data = self.sessions.get((device, session))
             if not data:
                 self.send_error(HTTPStatus.NOT_FOUND, "Session not found")

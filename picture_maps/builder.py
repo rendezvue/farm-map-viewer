@@ -142,7 +142,7 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
         "image_width": layout["width_px"],
         "image_height": layout["height_px"],
         "background": config.background,
-        "tile_url_template": f"/tiles/{device_name}/{session_name}/{{z}}/{{x}}/{{y}}.png",
+        "tile_url_template": f"/tiles/{device_name}/{session_name}/{{z}}/{{x}}/{{y}}.jpg",
         "frames_url": f"/api/devices/{device_name}/sessions/{session_name}/frames",
         "rails": dataset["rails"],
         "summary": {
@@ -321,9 +321,9 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
                 pad[:, :tile.shape[1], :tile.shape[2]] = tile
                 tile = pad
             arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
-            path = config.tiles_dir / str(max_zoom) / str(tx) / f"{ty}.png"
+            path = config.tiles_dir / str(max_zoom) / str(tx) / f"{ty}.jpg"
             path.parent.mkdir(parents=True, exist_ok=True)
-            Image.fromarray(arr).save(path, format="PNG", compress_level=6)
+            Image.fromarray(arr).save(path, format="JPEG", quality=82)
 
     # 줌 레벨 다운샘플링
     current_canvas = canvas.unsqueeze(0)  # (1, 3, H, W)
@@ -350,9 +350,9 @@ def build_tile_pyramid(config: BuildConfig, frames: list[dict[str, Any]], layout
                 x0, y0 = tx * ts, ty * ts
                 tile = zoom_canvas[:, y0:y0 + ts, x0:x0 + ts]
                 arr = (tile.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
-                path = config.tiles_dir / str(zoom) / str(tx) / f"{ty}.png"
+                path = config.tiles_dir / str(zoom) / str(tx) / f"{ty}.jpg"
                 path.parent.mkdir(parents=True, exist_ok=True)
-                Image.fromarray(arr).save(path, format="PNG", compress_level=6)
+                Image.fromarray(arr).save(path, format="JPEG", quality=82)
 
     return {
         str(zoom): {"tiles_x": dims[0], "tiles_y": dims[1]}
