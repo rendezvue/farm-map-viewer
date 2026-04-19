@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import BuildConfig
+from .layers import generate_demo_layers_runtime
 
 
 TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.(png|jpg)$")
@@ -21,6 +22,7 @@ SESSION_MANIFEST_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/manife
 SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$")
 SESSION_INSIGHTS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/insights$")
 SESSION_REPORT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/report$")
+SESSION_LAYERS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/layers$")
 
 
 class SessionData:
@@ -33,6 +35,12 @@ class SessionData:
         if config.insights_path.exists():
             try:
                 self.insights = json.loads(config.insights_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        self.layers: dict[str, Any] | None = None
+        if config.layers_path.exists():
+            try:
+                self.layers = json.loads(config.layers_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
@@ -138,6 +146,33 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 self.serve_json({"available": False, "report": {}}, send_body=send_body)
             else:
                 self.serve_json({"available": True, "report": data.insights.get("report", {}), "session": data.insights.get("session", {})}, send_body=send_body)
+            return
+
+        layers_match = SESSION_LAYERS_RE.match(path)
+        if layers_match:
+            device, session = layers_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            if data.layers is not None:
+                self.serve_json(data.layers, send_body=send_body)
+            else:
+                # Runtime fallback: generate demo layers from manifest + frames
+                manifest = data.manifest
+                frames = data.frames.get("items", [])
+                rails = manifest.get("rails", [])
+                world = manifest.get("world", {})
+                generated = generate_demo_layers_runtime(
+                    session_key=manifest.get("dataset_key", session),
+                    rails=rails,
+                    frames=frames,
+                    odom_x_min=world.get("odom_x_min", 0.0),
+                    odom_x_max=world.get("odom_x_max", 10.0),
+                    step_m=world.get("sample_step_m", 0.5),
+                )
+                data.layers = generated
+                self.serve_json(generated, send_body=send_body)
             return
 
         tile_match = TILE_RE.match(path)

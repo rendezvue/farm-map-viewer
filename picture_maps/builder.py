@@ -17,6 +17,7 @@ from PIL import Image, ImageColor, ImageDraw, ImageOps
 from .config import BuildConfig
 from .dataset import CAMERA_ORDER, scan_dataset
 from .insights import build_insights
+from .layers import build_layers
 
 
 try:
@@ -191,6 +192,8 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
     )
     print(f"  [{device_name}/{session_name}] computing insights ...", flush=True)
     build_insights(config)
+    print(f"  [{device_name}/{session_name}] building overlay layers ...", flush=True)
+    build_layers(config, public_frames, dataset)
     return manifest
 
 

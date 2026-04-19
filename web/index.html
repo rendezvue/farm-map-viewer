@@ -63,6 +63,17 @@
           <div class="rail-list" id="railList"></div>
         </section>
 
+        <!-- 레이어 패널 -->
+        <section class="panel panel-layers" id="layersPanel" hidden>
+          <div class="panel-head">
+            <h2>맵 오버레이 레이어</h2>
+            <span class="demo-badge">DEMO</span>
+          </div>
+          <div class="layers-list" id="layersList"></div>
+          <div class="layer-legend" id="layerLegend"></div>
+          <div class="layer-summary" id="layerSummary" hidden></div>
+        </section>
+
         <!-- 알림 패널 -->
         <section class="panel panel-alerts" id="alertsPanel" hidden>
           <div class="panel-head">
@@ -81,6 +92,7 @@
             <p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>
           </div>
           <div id="selectionInsights" class="selection-insights" hidden></div>
+          <div id="segmentDetail" class="segment-detail" hidden></div>
           <div class="hero-preview">
             <img id="contactSheet" alt="" hidden />
           </div>
@@ -98,6 +110,7 @@
             <button id="zoomOutButton" type="button">-</button>
             <button id="zoomInButton" type="button">+</button>
             <button id="toggleOverlayButton" type="button" title="위험도 오버레이 토글">위험도</button>
+            <button id="toggleLayersButton" type="button" title="분석 레이어 패널 토글" class="layer-toggle-btn">레이어</button>
             <button id="reportButton" type="button" class="report-btn">리포트</button>
             <button id="reloadButton" type="button">새로고침</button>
           </div>
@@ -109,6 +122,7 @@
             <div id="detailPane" class="detail-pane"></div>
             <div id="annotationPane" class="annotation-pane"></div>
             <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+            <div id="segmentTooltip" class="segment-tooltip" hidden></div>
             <div class="hud">
               <div class="hud-card">
                 <span class="hud-label">Zoom</span>

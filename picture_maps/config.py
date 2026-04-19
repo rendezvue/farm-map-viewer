@@ -67,3 +67,7 @@ class BuildConfig:
     @property
     def insights_path(self) -> Path:
         return self.output_dir / "insights.json"
+
+    @property
+    def layers_path(self) -> Path:
+        return self.output_dir / "layers.json"

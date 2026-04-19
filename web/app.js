@@ -64,6 +64,68 @@ function deltaText(delta) {
 let currentInsights = null;
 let showRiskOverlay = true;
 
+// ─── Layer store ──────────────────────────────────────────────────────────────
+
+let currentLayers = null;          // full layers.json payload
+let activeLayerId = null;          // which layer is rendered on map
+let showLayerOverlay = false;      // overlay on/off
+let hoveredSegmentId = null;
+let selectedSegmentId = null;
+
+const COLOR_SCHEMES = {
+  yellow_red: (v) => {
+    const t = v / 100;
+    if (t < 0.4) return `rgba(250,200,30,${0.12 + t * 0.5})`;
+    if (t < 0.7) return `rgba(230,120,20,${0.18 + t * 0.45})`;
+    return `rgba(210,40,30,${0.22 + t * 0.5})`;
+  },
+  green_red: (v) => {
+    const t = v / 100;
+    if (t < 0.4) return `rgba(40,170,80,${0.12 + t * 0.4})`;
+    if (t < 0.7) return `rgba(220,160,20,${0.18 + t * 0.45})`;
+    return `rgba(210,40,30,${0.22 + t * 0.5})`;
+  },
+  growth: (v) => {
+    const t = v / 100;
+    if (t < 0.4) return `rgba(30,160,70,${0.12 + t * 0.4})`;
+    if (t < 0.7) return `rgba(180,110,20,${0.18 + t * 0.45})`;
+    return `rgba(200,50,30,${0.22 + t * 0.5})`;
+  },
+  blue_warn: (v) => {
+    const t = v / 100;
+    if (t < 0.4) return `rgba(60,130,200,${0.1 + t * 0.35})`;
+    if (t < 0.7) return `rgba(180,100,20,${0.18 + t * 0.4})`;
+    return `rgba(200,40,40,${0.22 + t * 0.5})`;
+  },
+  harvest: (v) => {
+    const t = v / 100;
+    if (t < 0.4) return `rgba(160,80,200,${0.08 + t * 0.3})`;
+    if (t < 0.7) return `rgba(200,140,20,${0.14 + t * 0.4})`;
+    return `rgba(220,60,20,${0.2 + t * 0.5})`;
+  },
+};
+
+const LAYER_LEGEND_STEPS = [
+  { label: "낮음", value: 20 },
+  { label: "중간", value: 55 },
+  { label: "높음", value: 85 },
+];
+
+function getActiveLayer() {
+  if (!currentLayers || !activeLayerId) return null;
+  return currentLayers.layers.find((l) => l.id === activeLayerId) || null;
+}
+
+function getLayerColorFn(layer) {
+  return COLOR_SCHEMES[layer.color_scheme] || COLOR_SCHEMES.yellow_red;
+}
+
+function segmentSeverityColor(sev) {
+  if (sev === "high") return "var(--bad)";
+  if (sev === "medium") return "var(--warn)";
+  return "var(--good)";
+}
+
 // ─── TileMap ─────────────────────────────────────────────────────────────────
 
 function computeDetailSheetSize(frame) {
@@ -193,15 +255,26 @@ class TileMap {
       },
       pointermove: (event) => {
         this.updatePointerAnchor(event);
-        if (!this.drag || this.drag.id !== event.pointerId) return;
-        const dx = event.clientX - this.drag.lastX;
-        const dy = event.clientY - this.drag.lastY;
-        this.drag.lastX = event.clientX;
-        this.drag.lastY = event.clientY;
-        if (Math.abs(event.clientX - this.drag.startX) > 3 || Math.abs(event.clientY - this.drag.startY) > 3) {
-          this.drag.moved = true;
+        if (this.drag && this.drag.id === event.pointerId) {
+          const dx = event.clientX - this.drag.lastX;
+          const dy = event.clientY - this.drag.lastY;
+          this.drag.lastX = event.clientX;
+          this.drag.lastY = event.clientY;
+          if (Math.abs(event.clientX - this.drag.startX) > 3 || Math.abs(event.clientY - this.drag.startY) > 3) {
+            this.drag.moved = true;
+          }
+          this.panBy(dx, dy);
+        } else if (showLayerOverlay) {
+          const rect = this.container.getBoundingClientRect();
+          const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
+          const seg = this.pickSegment(world.x, world.y);
+          const newId = seg ? seg.id : null;
+          if (newId !== hoveredSegmentId) {
+            hoveredSegmentId = newId;
+            showSegmentTooltip(seg, event.clientX - rect.left, event.clientY - rect.top);
+            this.queueRender();
+          }
         }
-        this.panBy(dx, dy);
       },
       endPointer: (event) => {
         if (!this.drag || this.drag.id !== event.pointerId) return;
@@ -211,6 +284,16 @@ class TileMap {
         if (wasClick) {
           const rect = this.container.getBoundingClientRect();
           const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
+          // If layer overlay is active, check segment first
+          if (showLayerOverlay) {
+            const seg = this.pickSegment(world.x, world.y);
+            if (seg) {
+              selectedSegmentId = seg.id;
+              renderSegmentDetail(seg);
+              this.queueRender();
+              return;
+            }
+          }
           const picked = this.pickFrame(world.x, world.y);
           if (picked) {
             this.selectedFrameId = picked.id;
@@ -748,6 +831,11 @@ class TileMap {
       ctx.fillText(`${meter.toFixed(1)}m`, 10, screen.y - 6);
     }
 
+    // ── Layer segment overlay ─────────────────────────────────────────────────
+    if (showLayerOverlay) {
+      this.drawLayerSegments(ctx, width, height);
+    }
+
     // ── Selection highlight ───────────────────────────────────────────────────
     if (this.selectedFrameId != null) {
       const frame = this.frames.find((item) => item.id === this.selectedFrameId);
@@ -765,6 +853,98 @@ class TileMap {
         ctx.fill();
       }
     }
+  }
+
+  drawLayerSegments(ctx, width, height) {
+    const layer = getActiveLayer();
+    if (!layer) return;
+    const colorFn = getLayerColorFn(layer);
+    const layout = this.manifest.layout;
+    const world = this.manifest.world;
+    const rails = this.manifest.rails;
+
+    // Build a quick lookup: rail_name → rail_y_m + rail.column
+    const railMap = {};
+    for (const r of rails) railMap[r.name] = r;
+
+    for (const item of layer.items) {
+      const rail = railMap[item.rail_name];
+      if (!rail) continue;
+
+      // World-space left/right of this rail's cell column
+      const railLeft = layout.margin_x + rail.rail_y_m * layout.px_per_meter_x;
+      const railRight = railLeft + layout.cell_width;
+
+      // World-space top/bottom for this segment
+      const segTop = layout.margin_y + (item.start_m - world.odom_x_min) * layout.px_per_meter_y;
+      const segBottom = layout.margin_y + (item.end_m - world.odom_x_min) * layout.px_per_meter_y;
+
+      const tl = this.worldToScreen(railLeft, segTop);
+      const br = this.worldToScreen(railRight, segBottom);
+
+      if (br.x < 0 || tl.x > width || br.y < 0 || tl.y > height) continue;
+
+      const sw = br.x - tl.x;
+      const sh = br.y - tl.y;
+      if (sw < 1 || sh < 1) continue;
+
+      // Low confidence → draw with hatch pattern feel (lower opacity)
+      const opacityMod = item.confidence < 0.6 ? 0.55 : 1.0;
+
+      ctx.save();
+      ctx.globalAlpha = opacityMod;
+
+      // Fill
+      ctx.fillStyle = colorFn(item.value);
+      ctx.fillRect(tl.x, tl.y, sw, sh);
+
+      // Selected / hovered border
+      const isSelected = selectedSegmentId === item.id;
+      const isHovered = hoveredSegmentId === item.id;
+      if (isSelected) {
+        ctx.strokeStyle = "#ff5b2e";
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(tl.x + 1, tl.y + 1, sw - 2, sh - 2);
+      } else if (isHovered) {
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(tl.x + 0.5, tl.y + 0.5, sw - 1, sh - 1);
+      }
+
+      // Severity dot for high/medium segments when zoomed out
+      if (item.severity !== "low" && sw >= 8 && sh >= 8) {
+        const dotR = Math.min(5, Math.max(3, sw * 0.08));
+        ctx.fillStyle = item.severity === "high" ? "rgba(210,40,30,0.9)" : "rgba(200,110,20,0.85)";
+        ctx.beginPath();
+        ctx.arc(tl.x + sw / 2, tl.y + dotR + 2, dotR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  pickSegment(worldX, worldY) {
+    const layer = getActiveLayer();
+    if (!layer || !showLayerOverlay) return null;
+    const layout = this.manifest.layout;
+    const world = this.manifest.world;
+    const rails = this.manifest.rails;
+    const railMap = {};
+    for (const r of rails) railMap[r.name] = r;
+
+    for (const item of layer.items) {
+      const rail = railMap[item.rail_name];
+      if (!rail) continue;
+      const railLeft = layout.margin_x + rail.rail_y_m * layout.px_per_meter_x;
+      const railRight = railLeft + layout.cell_width;
+      const segTop = layout.margin_y + (item.start_m - world.odom_x_min) * layout.px_per_meter_y;
+      const segBottom = layout.margin_y + (item.end_m - world.odom_x_min) * layout.px_per_meter_y;
+      if (worldX >= railLeft && worldX <= railRight && worldY >= segTop && worldY <= segBottom) {
+        return item;
+      }
+    }
+    return null;
   }
 }
 
@@ -1137,11 +1317,336 @@ function closeReport() {
   document.body.classList.remove("modal-open");
 }
 
+// ─── Layer panel rendering ────────────────────────────────────────────────────
+
+function renderLayersPanel(layers) {
+  const panel = document.getElementById("layersPanel");
+  const list = document.getElementById("layersList");
+  const legend = document.getElementById("layerLegend");
+
+  if (!layers || !layers.layers?.length) {
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+  list.innerHTML = "";
+
+  for (const layer of layers.layers) {
+    const row = document.createElement("button");
+    row.className = "layer-row";
+    row.dataset.layerId = layer.id;
+    row.type = "button";
+
+    const indicator = document.createElement("span");
+    indicator.className = "layer-indicator";
+    indicator.dataset.scheme = layer.color_scheme;
+
+    const info = document.createElement("div");
+    info.className = "layer-info";
+    const label = createElement("strong", "layer-label", layer.label);
+    const desc = createElement("span", "layer-desc", layer.description);
+    info.append(label, desc);
+
+    const toggle = document.createElement("span");
+    toggle.className = "layer-toggle-dot";
+
+    row.append(indicator, info, toggle);
+
+    row.addEventListener("click", () => {
+      if (activeLayerId === layer.id && showLayerOverlay) {
+        // Turn off
+        showLayerOverlay = false;
+        activeLayerId = null;
+      } else {
+        activeLayerId = layer.id;
+        showLayerOverlay = true;
+      }
+      updateLayerRowStates();
+      renderLayerLegend(layer);
+      renderLayerSummary(layer);
+      currentMap?.queueRender();
+    });
+
+    list.appendChild(row);
+  }
+
+  updateLayerRowStates();
+}
+
+function updateLayerRowStates() {
+  for (const row of document.querySelectorAll(".layer-row")) {
+    const isActive = showLayerOverlay && row.dataset.layerId === activeLayerId;
+    row.classList.toggle("is-active", isActive);
+  }
+  // Update toolbar button
+  const btn = document.getElementById("toggleLayersButton");
+  if (btn) btn.classList.toggle("is-active", showLayerOverlay);
+}
+
+function renderLayerLegend(layer) {
+  const legend = document.getElementById("layerLegend");
+  if (!layer) { legend.innerHTML = ""; return; }
+  const colorFn = COLOR_SCHEMES[layer.color_scheme] || COLOR_SCHEMES.yellow_red;
+
+  const steps = [
+    { label: "낮음", value: 15 },
+    { label: "중간", value: 55 },
+    { label: "높음", value: 85 },
+  ];
+
+  legend.innerHTML = "";
+  const title = createElement("span", "legend-title", `${layer.label} 범례`);
+  legend.appendChild(title);
+
+  const bar = document.createElement("div");
+  bar.className = "legend-bar";
+  for (let i = 0; i <= 20; i++) {
+    const cell = document.createElement("div");
+    cell.className = "legend-cell";
+    cell.style.background = colorFn(i * 5).replace(/rgba\(([^)]+),\s*[\d.]+\)/, "rgba($1, 0.85)");
+    bar.appendChild(cell);
+  }
+  legend.appendChild(bar);
+
+  const labels = document.createElement("div");
+  labels.className = "legend-labels";
+  for (const step of steps) {
+    const lbl = createElement("span", "legend-lbl", step.label);
+    labels.appendChild(lbl);
+  }
+  legend.appendChild(labels);
+}
+
+function renderLayerSummary(layer) {
+  const el = document.getElementById("layerSummary");
+  if (!layer) { el.hidden = true; return; }
+
+  const items = layer.items || [];
+  const high = items.filter((i) => i.severity === "high").length;
+  const medium = items.filter((i) => i.severity === "medium").length;
+  const railsAffected = new Set(items.filter((i) => i.severity !== "low").map((i) => i.rail_name)).size;
+
+  el.hidden = false;
+  el.innerHTML = "";
+
+  const stats = [
+    { value: high, label: "고위험", cls: "stat-bad" },
+    { value: medium, label: "주의", cls: "stat-warn" },
+    { value: railsAffected, label: "영향 Rail", cls: "" },
+  ];
+
+  for (const s of stats) {
+    const stat = document.createElement("div");
+    stat.className = `layer-stat ${s.cls}`;
+    const val = createElement("strong", "layer-stat-value", String(s.value));
+    const lbl = createElement("span", "layer-stat-label", s.label);
+    stat.append(val, lbl);
+    el.appendChild(stat);
+  }
+}
+
+// ─── Segment tooltip ──────────────────────────────────────────────────────────
+
+function showSegmentTooltip(item, screenX, screenY) {
+  const tooltip = document.getElementById("segmentTooltip");
+  if (!item) {
+    tooltip.hidden = true;
+    return;
+  }
+
+  const layer = getActiveLayer();
+  tooltip.hidden = false;
+  tooltip.innerHTML = `
+    <div class="seg-tooltip-header">
+      <span class="seg-tooltip-layer">${layer?.label || ""}</span>
+      <span class="seg-tooltip-demo">DEMO</span>
+    </div>
+    <div class="seg-tooltip-title" style="color:${segmentSeverityColor(item.severity)}">${item.title}</div>
+    <div class="seg-tooltip-meta">
+      <span>${item.rail_name}</span>
+      <span>${item.start_m.toFixed(1)}m – ${item.end_m.toFixed(1)}m</span>
+    </div>
+    <div class="seg-tooltip-score">
+      <strong>${item.value}</strong><span>/100</span>
+      <span class="seg-tooltip-conf" title="신뢰도">conf ${Math.round(item.confidence * 100)}%</span>
+    </div>
+    <div class="seg-tooltip-summary">${item.summary}</div>
+  `;
+
+  const viewport = document.getElementById("mapViewport");
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  let x = screenX + 12;
+  let y = screenY - 10;
+  // Keep within viewport
+  const tw = 220;
+  const th = 130;
+  if (x + tw > vw) x = screenX - tw - 8;
+  if (y + th > vh) y = screenY - th - 8;
+  tooltip.style.left = `${Math.max(0, x)}px`;
+  tooltip.style.top = `${Math.max(0, y)}px`;
+}
+
+// ─── Segment detail panel ─────────────────────────────────────────────────────
+
+function renderSegmentDetail(item) {
+  const el = document.getElementById("segmentDetail");
+  if (!item) { el.hidden = true; return; }
+
+  const layer = getActiveLayer();
+  el.hidden = false;
+  el.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.className = "seg-detail-header";
+
+  const layerLabel = createElement("span", "seg-detail-layer", layer?.label || "");
+  const demoBadge = createElement("span", "demo-badge", "DEMO");
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "seg-detail-close";
+  closeBtn.type = "button";
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("click", () => {
+    selectedSegmentId = null;
+    el.hidden = true;
+    currentMap?.queueRender();
+  });
+  header.append(layerLabel, demoBadge, closeBtn);
+  el.appendChild(header);
+
+  const sevColor = segmentSeverityColor(item.severity);
+  const titleEl = createElement("div", "seg-detail-title");
+  titleEl.style.color = sevColor;
+  titleEl.textContent = item.title;
+  el.appendChild(titleEl);
+
+  const scoreRow = document.createElement("div");
+  scoreRow.className = "seg-detail-score-row";
+  const scoreEl = createElement("strong", "seg-detail-score", String(item.value));
+  scoreEl.style.color = sevColor;
+  const confEl = createElement("span", "seg-detail-conf", `신뢰도 ${Math.round(item.confidence * 100)}%`);
+  const sevEl = createElement("span", `seg-detail-sev sev-${item.severity}`, item.severity.toUpperCase());
+  scoreRow.append(scoreEl, confEl, sevEl);
+  el.appendChild(scoreRow);
+
+  const metaEl = createElement("div", "seg-detail-meta", `${item.rail_name} · ${item.start_m.toFixed(1)}–${item.end_m.toFixed(1)}m · ${item.frame_ids?.length || 0}프레임`);
+  el.appendChild(metaEl);
+
+  if (item.summary) {
+    const summaryEl = createElement("p", "seg-detail-summary", item.summary);
+    el.appendChild(summaryEl);
+  }
+
+  if (item.recommended_action) {
+    const actionBox = document.createElement("div");
+    actionBox.className = "seg-detail-action";
+    const icon = createElement("span", "seg-action-icon", "→");
+    const text = createElement("span", "", item.recommended_action);
+    actionBox.append(icon, text);
+    el.appendChild(actionBox);
+  }
+
+  if (item.reasons?.length > 0) {
+    const reasonsEl = document.createElement("div");
+    reasonsEl.className = "seg-detail-reasons";
+    for (const r of item.reasons) {
+      const tag = createElement("span", "seg-reason-tag", REASON_LABELS[r] || r);
+      reasonsEl.appendChild(tag);
+    }
+    el.appendChild(reasonsEl);
+  }
+
+  const sourceEl = createElement("div", "seg-detail-source", `데이터 출처: ${item.source || "demo"}`);
+  el.appendChild(sourceEl);
+}
+
+const REASON_LABELS = {
+  growth_stagnation: "생육 정체",
+  powdery_mildew_risk: "흰가루병 위험",
+  camera_missing: "카메라 누락",
+  growth_slowdown: "생육 둔화",
+  minor_anomaly: "경미한 이상",
+  aphid_pattern: "진딧물 패턴",
+  leaf_discoloration: "잎 변색",
+  minor_leaf_spots: "경미한 반점",
+  early_mildew: "초기 곰팡이",
+  consecutive_low_growth: "연속 저성장",
+  environmental_stress: "환경 스트레스",
+  frame_gap: "프레임 공백",
+  odom_anomaly: "위치 이상",
+  single_camera_missing: "카메라 1개 누락",
+  irregular_interval: "불규칙 간격",
+  brix_above_threshold: "당도 기준 초과",
+  color_index_ripe: "색도 성숙",
+  size_target_met: "크기 기준 충족",
+  approaching_threshold: "기준 접근 중",
+  partial_ripening: "부분 숙성",
+  below_avg_height: "평균 이하 생장",
+};
+
+// ─── Quick summary (ops panel integration) ───────────────────────────────────
+
+function renderLayerQuickSummary(layers) {
+  if (!layers) return;
+
+  const apLayer = layers.layers?.find((l) => l.id === "action_priority");
+  const dpLayer = layers.layers?.find((l) => l.id === "disease_pest_risk");
+  const drLayer = layers.layers?.find((l) => l.id === "data_reliability");
+
+  const highActionCount = apLayer?.items.filter((i) => i.severity === "high").length ?? 0;
+  const highDiseaseCount = dpLayer?.items.filter((i) => i.severity === "high").length ?? 0;
+  const dataGapCount = drLayer?.items.filter((i) => i.severity !== "low").length ?? 0;
+  const priorityRails = new Set(
+    (apLayer?.items || []).filter((i) => i.severity !== "low").map((i) => i.rail_name)
+  ).size;
+
+  // Update existing ops stats if panel is hidden (no insights), else add layer summary
+  const opsPanel = document.getElementById("opsPanel");
+  let layerOpsPanel = document.getElementById("layerOpsPanel");
+
+  if (!layerOpsPanel) {
+    layerOpsPanel = document.createElement("section");
+    layerOpsPanel.className = "panel panel-ops panel-layer-ops";
+    layerOpsPanel.id = "layerOpsPanel";
+    layerOpsPanel.innerHTML = `
+      <div class="panel-head">
+        <h2>빠른 현황 요약</h2>
+        <span class="demo-badge">DEMO</span>
+      </div>
+      <div class="ops-grid" id="layerOpsGrid"></div>
+    `;
+    opsPanel.parentElement.insertBefore(layerOpsPanel, opsPanel.nextSibling);
+  }
+
+  layerOpsPanel.hidden = false;
+  const grid = document.getElementById("layerOpsGrid");
+  grid.innerHTML = "";
+
+  const stats = [
+    { id: "statHighAction", value: highActionCount, label: "즉시조치", cls: highActionCount > 0 ? "stat-bad" : "stat-good" },
+    { id: "statPriorityRailsL", value: priorityRails, label: "우선 Rail", cls: priorityRails > 0 ? "stat-warn" : "stat-good" },
+    { id: "statHighDisease", value: highDiseaseCount, label: "병충해↑", cls: highDiseaseCount > 0 ? "stat-bad" : "stat-good" },
+    { id: "statDataGap", value: dataGapCount, label: "데이터이상", cls: dataGapCount > 0 ? "stat-warn" : "stat-good" },
+  ];
+
+  for (const s of stats) {
+    const stat = document.createElement("div");
+    stat.className = `ops-stat ${s.cls}`;
+    stat.id = s.id;
+    const val = createElement("span", "ops-stat-value", String(s.value));
+    const lbl = createElement("span", "ops-stat-label", s.label);
+    stat.append(val, lbl);
+    grid.appendChild(stat);
+  }
+}
+
 // ─── Session loading ──────────────────────────────────────────────────────────
 
 let currentMap = null;
 let currentSessionLoadToken = 0;
 let currentInsightsData = null;
+let currentLayersData = null;
 
 async function loadSession(deviceName, sessionName, loadToken = currentSessionLoadToken) {
   const manifest = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/manifest`);
@@ -1160,6 +1665,22 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   if (loadToken !== currentSessionLoadToken) return null;
   currentInsights = insights;
   currentInsightsData = insights;
+
+  // Load layers (non-blocking)
+  let layers = null;
+  try {
+    layers = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/layers`);
+  } catch (_) {
+    layers = null;
+  }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentLayers = layers;
+  currentLayersData = layers;
+  // Reset layer state for new session
+  activeLayerId = null;
+  showLayerOverlay = false;
+  selectedSegmentId = null;
+  hoveredSegmentId = null;
 
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
@@ -1200,6 +1721,11 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   renderOpsSummary(insights);
   renderAlertPanel(insights, map);
   renderRailList(manifest, frames, map, insights);
+  renderLayersPanel(layers);
+  renderLayerQuickSummary(layers);
+  // Hide segment detail panel on new session
+  document.getElementById("segmentDetail").hidden = true;
+  document.getElementById("segmentTooltip").hidden = true;
 
   if (frames[0]) {
     map.selectedFrameId = frames[0].id;
@@ -1311,6 +1837,24 @@ async function bootstrap() {
   });
   // Default: overlay on
   document.getElementById("toggleOverlayButton").classList.add("is-active");
+
+  document.getElementById("toggleLayersButton").addEventListener("click", () => {
+    if (!currentLayersData) return;
+    if (!showLayerOverlay) {
+      // Turn on first available layer
+      if (!activeLayerId && currentLayersData.layers?.length) {
+        activeLayerId = currentLayersData.layers[0].id;
+      }
+      showLayerOverlay = true;
+    } else {
+      showLayerOverlay = false;
+    }
+    updateLayerRowStates();
+    const layer = getActiveLayer();
+    renderLayerLegend(layer);
+    renderLayerSummary(layer);
+    currentMap?.queueRender();
+  });
 
   document.getElementById("reportButton").addEventListener("click", () => {
     openReport(currentInsightsData);
