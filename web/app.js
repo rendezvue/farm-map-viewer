@@ -511,6 +511,8 @@ class TileMap {
     const tileWorldHeight = this.tileWorldHeight;
     const zoomDims = this.zoomDims;
     const bounds = this.getViewBounds();
+    const dpr = window.devicePixelRatio || 1;
+    const snap = (value) => Math.round(value * dpr) / dpr;
     const tx0 = clamp(Math.floor(bounds.left / tileWorldWidth), 0, zoomDims.tiles_x - 1);
     const ty0 = clamp(Math.floor(bounds.top / tileWorldHeight), 0, zoomDims.tiles_y - 1);
     const tx1 = clamp(Math.floor(bounds.right / tileWorldWidth), 0, zoomDims.tiles_x - 1);
@@ -535,13 +537,28 @@ class TileMap {
         }
         const worldLeft = tx * tileWorldWidth;
         const worldTop = ty * tileWorldHeight;
-        const screen = this.worldToScreen(worldLeft, worldTop);
         const validTileWidth = Math.min(this.manifest.tile_size, this.zoomImageWidth - tx * this.manifest.tile_size);
         const validTileHeight = Math.min(this.manifest.tile_size, this.zoomImageHeight - ty * this.manifest.tile_size);
-        tile.style.transform = `translate(${screen.x}px, ${screen.y}px)`;
-        tile.style.width = `${validTileWidth * tileScale}px`;
-        tile.style.height = `${validTileHeight * tileScale}px`;
-        tile.style.backgroundSize = `${this.manifest.tile_size * tileScale}px ${this.manifest.tile_size * tileScale}px`;
+        const imageWorldRight = worldLeft + validTileWidth / this.integerScaleX;
+        const imageWorldBottom = worldTop + validTileHeight / this.integerScaleY;
+        const fullWorldRight = worldLeft + tileWorldWidth;
+        const fullWorldBottom = worldTop + tileWorldHeight;
+        const topLeft = this.worldToScreen(worldLeft, worldTop);
+        const bottomRight = this.worldToScreen(imageWorldRight, imageWorldBottom);
+        const fullBottomRight = this.worldToScreen(fullWorldRight, fullWorldBottom);
+        const left = snap(topLeft.x);
+        const top = snap(topLeft.y);
+        const right = snap(bottomRight.x);
+        const bottom = snap(bottomRight.y);
+        const fullRight = snap(fullBottomRight.x);
+        const fullBottom = snap(fullBottomRight.y);
+        tile.style.transform = "";
+        tile.style.left = `${left}px`;
+        tile.style.top = `${top}px`;
+        tile.style.width = `${Math.max(0, right - left)}px`;
+        tile.style.height = `${Math.max(0, bottom - top)}px`;
+        tile.style.backgroundPosition = "0px 0px";
+        tile.style.backgroundSize = `${Math.max(0, fullRight - left)}px ${Math.max(0, fullBottom - top)}px`;
       }
     }
 

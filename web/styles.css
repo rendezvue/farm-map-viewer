@@ -401,7 +401,7 @@ button {
   background-repeat: no-repeat;
   background-position: top left;
   image-rendering: auto;
-  will-change: transform, width, height;
+  will-change: left, top, width, height;
 }
 
 .detail-frame {
