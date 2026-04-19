@@ -16,6 +16,7 @@ from PIL import Image, ImageColor, ImageDraw, ImageOps
 
 from .config import BuildConfig
 from .dataset import CAMERA_ORDER, scan_dataset
+from .insights import build_insights
 
 
 try:
@@ -188,6 +189,8 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
         json.dumps(server_index, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    print(f"  [{device_name}/{session_name}] computing insights ...", flush=True)
+    build_insights(config)
     return manifest
 
 

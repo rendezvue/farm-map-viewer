@@ -63,3 +63,7 @@ class BuildConfig:
     @property
     def server_index_path(self) -> Path:
         return self.output_dir / "server_index.json"
+
+    @property
+    def insights_path(self) -> Path:
+        return self.output_dir / "insights.json"

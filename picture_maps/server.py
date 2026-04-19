@@ -19,6 +19,8 @@ IMAGE_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/image/(\d+)/([a-z
 CONTACT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/contact-sheet/(\d+)\.jpg$")
 SESSION_MANIFEST_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/manifest$")
 SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$")
+SESSION_INSIGHTS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/insights$")
+SESSION_REPORT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/report$")
 
 
 class SessionData:
@@ -27,6 +29,12 @@ class SessionData:
         self.manifest: dict[str, Any] = json.loads(config.manifest_path.read_text(encoding="utf-8"))
         self.frames: dict[str, Any] = json.loads(config.frames_path.read_text(encoding="utf-8"))
         self.server_index: dict[str, Any] = json.loads(config.server_index_path.read_text(encoding="utf-8"))
+        self.insights: dict[str, Any] | None = None
+        if config.insights_path.exists():
+            try:
+                self.insights = json.loads(config.insights_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
 
 
 class PictureMapsHandler(SimpleHTTPRequestHandler):
@@ -104,6 +112,32 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
                 return
             self.serve_json(data.frames, send_body=send_body)
+            return
+
+        insights_match = SESSION_INSIGHTS_RE.match(path)
+        if insights_match:
+            device, session = insights_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            if data.insights is None:
+                self.serve_json({"available": False, "session": {}, "rails": {}, "frames": {}, "alerts": [], "report": {}}, send_body=send_body)
+            else:
+                self.serve_json({"available": True, **data.insights}, send_body=send_body)
+            return
+
+        report_match = SESSION_REPORT_RE.match(path)
+        if report_match:
+            device, session = report_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            if data.insights is None:
+                self.serve_json({"available": False, "report": {}}, send_body=send_body)
+            else:
+                self.serve_json({"available": True, "report": data.insights.get("report", {}), "session": data.insights.get("session", {})}, send_body=send_body)
             return
 
         tile_match = TILE_RE.match(path)

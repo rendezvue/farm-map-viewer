@@ -3,17 +3,49 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Picture Maps</title>
+    <title>Farm Operations Dashboard</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <p class="eyebrow">Farm Picture Tiles</p>
+          <p class="eyebrow">Farm Operations Dashboard</p>
           <h1>Picture Maps</h1>
           <p class="summary" id="datasetSummary">데이터셋을 불러오는 중입니다.</p>
         </div>
+
+        <!-- 운영 요약 -->
+        <section class="panel panel-ops" id="opsPanel" hidden>
+          <div class="panel-head">
+            <h2>운영 요약</h2>
+            <span class="source-badge" id="opsBadge" title="분석 방식">heuristic</span>
+          </div>
+          <div class="ops-grid">
+            <div class="ops-stat" id="statHealth">
+              <span class="ops-stat-value">-</span>
+              <span class="ops-stat-label">Health</span>
+            </div>
+            <div class="ops-stat" id="statAlerts">
+              <span class="ops-stat-value">-</span>
+              <span class="ops-stat-label">Alerts</span>
+            </div>
+            <div class="ops-stat" id="statPriorityRails">
+              <span class="ops-stat-value">-</span>
+              <span class="ops-stat-label">우선 Rail</span>
+            </div>
+            <div class="ops-stat" id="statGaps">
+              <span class="ops-stat-value">-</span>
+              <span class="ops-stat-label">공백 구간</span>
+            </div>
+          </div>
+          <div class="delta-row" id="deltaRow" hidden>
+            <span class="delta-label">직전 대비</span>
+            <span class="delta-value" id="deltaHealth"></span>
+            <span class="delta-sep">·</span>
+            <span class="delta-compared" id="deltaCompared"></span>
+          </div>
+        </section>
 
         <section class="panel panel-session">
           <div class="panel-head">
@@ -31,6 +63,15 @@
           <div class="rail-list" id="railList"></div>
         </section>
 
+        <!-- 알림 패널 -->
+        <section class="panel panel-alerts" id="alertsPanel" hidden>
+          <div class="panel-head">
+            <h2>Alerts</h2>
+            <span class="pill" id="alertCountPill">0</span>
+          </div>
+          <div class="alert-list" id="alertList"></div>
+        </section>
+
         <section class="panel panel-selection">
           <div class="panel-head">
             <h2>Selection</h2>
@@ -39,6 +80,7 @@
           <div id="selectionMeta" class="selection-meta">
             <p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>
           </div>
+          <div id="selectionInsights" class="selection-insights" hidden></div>
           <div class="hero-preview">
             <img id="contactSheet" alt="" hidden />
           </div>
@@ -50,11 +92,13 @@
         <header class="topbar">
           <div class="topbar-copy">
             <p class="eyebrow">Tiled Viewer</p>
-            <h2>네이버지도식 타일 피라미드 농장 뷰어</h2>
+            <h2>운영 의사결정 대시보드</h2>
           </div>
           <div class="toolbar">
             <button id="zoomOutButton" type="button">-</button>
             <button id="zoomInButton" type="button">+</button>
+            <button id="toggleOverlayButton" type="button" title="위험도 오버레이 토글">위험도</button>
+            <button id="reportButton" type="button" class="report-btn">리포트</button>
             <button id="reloadButton" type="button">새로고침</button>
           </div>
         </header>
@@ -81,6 +125,21 @@
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- 리포트 모달 -->
+    <div id="reportModal" class="report-modal" hidden>
+      <div class="report-modal-backdrop" id="reportBackdrop"></div>
+      <div class="report-modal-content" id="reportContent">
+        <div class="report-header">
+          <h2>운영 리포트</h2>
+          <div class="report-actions">
+            <button class="ghost-button" id="printButton" type="button">인쇄 / PDF 저장</button>
+            <button class="ghost-button report-close" id="reportClose" type="button">닫기</button>
+          </div>
+        </div>
+        <div id="reportBody" class="report-body"></div>
+      </div>
     </div>
 
     <script type="module" src="/app.js"></script>
