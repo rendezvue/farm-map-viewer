@@ -41,6 +41,11 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:
         return
 
+    def end_headers(self) -> None:
+        if getattr(self, "_serving_static", False):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def do_GET(self) -> None:
         self.handle_request(send_body=True)
 
@@ -153,10 +158,12 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND, "API not found")
             return
 
+        self._serving_static = True
         if send_body:
             super().do_GET()
         else:
             super().do_HEAD()
+        self._serving_static = False
 
     def translate_path(self, path: str) -> str:
         parsed_path = urlparse(path).path

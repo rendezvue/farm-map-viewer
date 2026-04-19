@@ -29,6 +29,10 @@ body {
     linear-gradient(135deg, #efe6d0 0%, #ece4d4 48%, #dbe2cd 100%);
 }
 
+[hidden] {
+  display: none !important;
+}
+
 button {
   border: 0;
   border-radius: 999px;
