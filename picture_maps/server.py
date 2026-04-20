@@ -4,6 +4,7 @@ import json
 import mimetypes
 import posixpath
 import re
+import sys
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -352,7 +353,10 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if send_body:
-            self.wfile.write(raw)
+            try:
+                self.wfile.write(raw)
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
     def serve_file(self, path: Path, *, send_body: bool = True, cache_seconds: int = 0) -> None:
         if not path.exists() or not path.is_file():
@@ -378,7 +382,21 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if send_body:
-            self.wfile.write(data)
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
+
+class ResilientThreadingHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def handle_error(self, request: Any, client_address: tuple[str, int]) -> None:
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def serve(
@@ -390,7 +408,7 @@ def serve(
 ) -> None:
     import threading
     handler = partial(PictureMapsHandler, web_root=web_root, sessions=sessions)
-    with ThreadingHTTPServer((host, port), handler) as httpd:
+    with ResilientThreadingHTTPServer((host, port), handler) as httpd:
         print(f"Picture Maps server listening on http://{host}:{port}", flush=True)
         for device, session in sorted(sessions):
             print(f"  {device}/{session}", flush=True)
