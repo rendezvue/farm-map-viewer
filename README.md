@@ -93,6 +93,7 @@ python3 -m picture_maps.cli serve \
 | `GET /api/devices/:d/sessions/:s/layers` | 5종 분석 레이어 |
 | `GET /api/devices/:d/sessions/:s/tasks` | **NEW** 오늘 할 일 작업 목록 |
 | `GET /api/devices/:d/sessions/:s/trends` | **NEW** Rail별 세션 추이 데이터 |
+| `GET /api/devices/:d/sessions/:s/pest-detections` | **NEW** 실제 병충해 프레임 마커 데이터 |
 | `GET /api/devices/:d/sessions/:s/report` | 운영 리포트 요약 |
 
 ### tasks.json 구조
@@ -156,6 +157,36 @@ python3 -m picture_maps.cli serve \
 ```
 
 > **실제 데이터 연동 시**: `tasks.py`의 `generate_tasks()`, `trends.py`의 `generate_trends()`를 교체하거나, layers.json 대신 실 분석 결과 JSON을 같은 포맷으로 제공하면 됩니다.
+
+## pest_detections.json 구조
+
+세션 폴더 또는 `build/<dataset_key>/` 아래에 `pest_detections.json`이 있으면, 프론트에서 **병충해 위험 레이어 활성화 시 실제 프레임 위치 마커**를 표시합니다. 개발/데모 확인용으로는 `demo_data/pest_detections/<device>/<session>.json`도 fallback으로 읽습니다.
+
+```json
+{
+  "source": "pest-detector-v1",
+  "detections": [
+    {
+      "id": "pest_0001",
+      "frame_id": 1234,
+      "rail_name": "rail_005",
+      "odom_x": 12.4,
+      "severity": "high",
+      "label": "진딧물",
+      "confidence": 0.91,
+      "camera": "front_left",
+      "bbox": [120, 84, 188, 146],
+      "note": "잎 뒷면 군집 의심"
+    }
+  ]
+}
+```
+
+- `frame_id`: 가장 중요한 필드입니다. 마커는 이 프레임을 기준으로 지도에 표시됩니다.
+- `camera`: 있으면 2x2 콘택트시트 내 해당 카메라 사분면 쪽으로 마커를 이동합니다.
+- `bbox`: 있으면 해당 카메라 이미지 내부 중심점 기준으로 더 정확한 마커 위치를 계산합니다.
+- `severity`: `high`, `medium`, `low`
+- 파일이 없으면 API는 `available: false`를 반환하고 마커는 표시되지 않습니다.
 
 ## insights.json 구조
 

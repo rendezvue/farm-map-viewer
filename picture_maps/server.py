@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from .config import BuildConfig
 from .crop_stats import build_crop_summary_payload
 from .layers import generate_demo_layers_runtime
+from .pest_detections import load_pest_detections
 from .tasks import generate_tasks
 from .trends import generate_trends
 
@@ -29,6 +30,7 @@ SESSION_LAYERS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/layers$"
 SESSION_TASKS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/tasks$")
 SESSION_TRENDS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/trends$")
 SESSION_CROP_SUMMARY_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/crop-summary$")
+SESSION_PEST_DETECTIONS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/pest-detections$")
 
 
 class SessionData:
@@ -260,6 +262,21 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 "source": payload.get("source", "runtime"),
                 "counts": payload.get("counts", {}),
             }
+            self.serve_json(payload, send_body=send_body)
+            return
+
+        pest_detections_match = SESSION_PEST_DETECTIONS_RE.match(path)
+        if pest_detections_match:
+            device, session = pest_detections_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            payload = load_pest_detections(
+                config=data.config,
+                manifest=data.manifest,
+                frames_payload=data.frames,
+            )
             self.serve_json(payload, send_body=send_body)
             return
 

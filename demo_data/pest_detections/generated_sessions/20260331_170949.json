@@ -1,0 +1,125 @@
+{
+  "source": "demo-fixture",
+  "detections": [
+    {
+      "id": "pest_demo_001",
+      "frame_id": 189,
+      "rail_name": "rail_004",
+      "odom_x": 38.0,
+      "severity": "high",
+      "label": "진딧물",
+      "confidence": 0.93,
+      "camera": "front_left",
+      "bbox": [118, 82, 198, 144],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_002",
+      "frame_id": 408,
+      "rail_name": "rail_009",
+      "odom_x": 7.0,
+      "severity": "medium",
+      "label": "흰가루병",
+      "confidence": 0.74,
+      "camera": "front_right",
+      "bbox": [80, 60, 170, 130],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_003",
+      "frame_id": 630,
+      "rail_name": "rail_013",
+      "odom_x": 29.0,
+      "severity": "high",
+      "label": "응애 의심",
+      "confidence": 0.88,
+      "camera": "rear",
+      "bbox": [102, 70, 192, 138],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_004",
+      "frame_id": 864,
+      "rail_name": "rail_018",
+      "odom_x": 13.0,
+      "severity": "medium",
+      "label": "잎 반점",
+      "confidence": 0.69,
+      "camera": "side",
+      "bbox": [92, 76, 176, 142],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_005",
+      "frame_id": 1094,
+      "rail_name": "rail_022",
+      "odom_x": 43.0,
+      "severity": "high",
+      "label": "진딧물 군집",
+      "confidence": 0.91,
+      "camera": "front_left",
+      "bbox": [126, 78, 208, 148],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_006",
+      "frame_id": 1406,
+      "rail_name": "rail_029",
+      "odom_x": 5.0,
+      "severity": "medium",
+      "label": "초기 곰팡이",
+      "confidence": 0.72,
+      "camera": "front_right",
+      "bbox": [74, 66, 166, 132],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_007",
+      "frame_id": 1675,
+      "rail_name": "rail_034",
+      "odom_x": 24.0,
+      "severity": "high",
+      "label": "총채벌레 의심",
+      "confidence": 0.86,
+      "camera": "rear",
+      "bbox": [108, 84, 194, 146],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_008",
+      "frame_id": 1942,
+      "rail_name": "rail_039",
+      "odom_x": 41.0,
+      "severity": "medium",
+      "label": "엽맥 변색",
+      "confidence": 0.66,
+      "camera": "side",
+      "bbox": [96, 72, 174, 136],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_009",
+      "frame_id": 2217,
+      "rail_name": "rail_045",
+      "odom_x": 16.0,
+      "severity": "high",
+      "label": "흰가루병 확산",
+      "confidence": 0.9,
+      "camera": "front_left",
+      "bbox": [122, 86, 210, 150],
+      "note": "샘플 병충해 마커"
+    },
+    {
+      "id": "pest_demo_010",
+      "frame_id": 2382,
+      "rail_name": "rail_048",
+      "odom_x": 31.0,
+      "severity": "medium",
+      "label": "진딧물 흔적",
+      "confidence": 0.7,
+      "camera": "front_right",
+      "bbox": [82, 68, 168, 134],
+      "note": "샘플 병충해 마커"
+    }
+  ]
+}

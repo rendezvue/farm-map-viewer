@@ -374,6 +374,7 @@ function renderCropPanel(summary = currentCropSummary) {
 
 let currentCropSummary = null;
 let currentInsights = null;
+let currentPestDetections = null;
 let showRiskOverlay = true;
 
 // ─── Task store ───────────────────────────────────────────────────────────────
@@ -395,6 +396,7 @@ let activeLayerId = null;          // which layer is rendered on map
 let showLayerOverlay = false;      // overlay on/off
 let hoveredSegmentId = null;
 let selectedSegmentId = null;
+let selectedPestDetectionId = null;
 
 const COLOR_SCHEMES = {
   yellow_red: (v) => {
@@ -427,6 +429,10 @@ const COLOR_SCHEMES = {
     if (t < 0.7) return `rgba(200,140,20,${0.14 + t * 0.4})`;
     return `rgba(220,60,20,${0.2 + t * 0.5})`;
   },
+  crop_stage: (v) => {
+    const stage = getHarvestStageInfo(v);
+    return hexToRgba(stage.color, stage.fillAlpha);
+  },
 };
 
 const LAYER_LEGEND_STEPS = [
@@ -448,6 +454,207 @@ function segmentSeverityColor(sev) {
   if (sev === "high") return "var(--bad)";
   if (sev === "medium") return "var(--warn)";
   return "var(--good)";
+}
+
+function normalizePestSeverity(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "high") return "high";
+  if (text === "low") return "low";
+  return "medium";
+}
+
+function toConfidenceRatio(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return clamp(numeric, 0, 1);
+}
+
+function normalizePestDetections(payload, sessionName = "-") {
+  const detections = Array.isArray(payload?.detections) ? payload.detections : [];
+  return {
+    available: Boolean(payload?.available),
+    session: payload?.session || sessionName,
+    source: payload?.source || null,
+    detections: detections
+      .map((item, index) => {
+        const frameId = Number(item?.frame_id);
+        if (!Number.isFinite(frameId)) return null;
+        const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
+          ? item.bbox.slice(0, 4).map((coord) => Number(coord))
+          : null;
+        return {
+          id: item?.id || `pest_${Math.round(frameId)}_${index + 1}`,
+          frame_id: Math.round(frameId),
+          rail_name: item?.rail_name || "",
+          odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
+          severity: normalizePestSeverity(item?.severity),
+          label: item?.label || "병충해",
+          confidence: toConfidenceRatio(item?.confidence),
+          camera: item?.camera || null,
+          bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
+          note: item?.note || null,
+          source: item?.source || payload?.source || null,
+        };
+      })
+      .filter(Boolean),
+  };
+}
+
+function getHarvestStageInfo(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return {
+      id: "flower",
+      label: "꽃",
+      color: "#d96f9c",
+      fillAlpha: 0.28,
+      legendAlpha: 0.34,
+      strokeAlpha: 0.42,
+    };
+  }
+  if (numeric >= 75) {
+    return {
+      id: "ripe",
+      label: "익음",
+      color: "#d96844",
+      fillAlpha: 0.26,
+      legendAlpha: 0.32,
+      strokeAlpha: 0.4,
+    };
+  }
+  if (numeric >= 50) {
+    return {
+      id: "midripe",
+      label: "덜익음",
+      color: "#efb44a",
+      fillAlpha: 0.24,
+      legendAlpha: 0.3,
+      strokeAlpha: 0.36,
+    };
+  }
+  if (numeric >= 25) {
+    return {
+      id: "unripe",
+      label: "안익음",
+      color: "#67a95c",
+      fillAlpha: 0.22,
+      legendAlpha: 0.28,
+      strokeAlpha: 0.34,
+    };
+  }
+  return {
+    id: "flower",
+    label: "꽃",
+    color: "#d96f9c",
+    fillAlpha: 0.28,
+    legendAlpha: 0.34,
+    strokeAlpha: 0.42,
+  };
+}
+
+function isSegmentHoverDisabled(layer = getActiveLayer()) {
+  return Boolean(layer?.id === "disease_pest_risk_v2_harvest");
+}
+
+function normalizeLayersPayload(layers) {
+  if (!layers || !Array.isArray(layers.layers)) return layers;
+  const nextLayers = [...layers.layers];
+  const diseaseIndex = nextLayers.findIndex((layer) => layer.id === "disease_pest_risk");
+  const harvestLayer = nextLayers.find((layer) => layer.id === "harvest_readiness");
+
+  if (!nextLayers.some((layer) => layer.id === "disease_pest_risk_v2")) {
+    const v2Layer = {
+      id: "disease_pest_risk_v2",
+      label: "병충해 위험 V2",
+      description: "실제 병충해 프레임 마커 보기",
+      unit: "marker",
+      range: [0, 1],
+      color_scheme: "green_red",
+      source: "marker",
+      items: [],
+    };
+    if (diseaseIndex >= 0) {
+      nextLayers.splice(diseaseIndex + 1, 0, v2Layer);
+    } else {
+      nextLayers.push(v2Layer);
+    }
+  }
+
+  if (!nextLayers.some((layer) => layer.id === "disease_pest_risk_v2_harvest")) {
+    const v2Index = nextLayers.findIndex((layer) => layer.id === "disease_pest_risk_v2");
+    const comboLayer = {
+      id: "disease_pest_risk_v2_harvest",
+      label: "병충해 위험 V2 + 수확준비도",
+      description: "병충해 마커와 수확준비도 단계를 함께 보기",
+      unit: "stage",
+      range: [0, 100],
+      color_scheme: "crop_stage",
+      source: "marker+harvest",
+      items: Array.isArray(harvestLayer?.items)
+        ? harvestLayer.items.map((item) => ({ ...item }))
+        : [],
+    };
+    if (v2Index >= 0) {
+      nextLayers.splice(v2Index + 1, 0, comboLayer);
+    } else {
+      nextLayers.push(comboLayer);
+    }
+  }
+
+  return {
+    ...layers,
+    layers: nextLayers,
+  };
+}
+
+function getPestDetectionStats() {
+  const detections = currentPestDetections?.detections || [];
+  const high = detections.filter((item) => item.severity === "high").length;
+  const medium = detections.filter((item) => item.severity === "medium").length;
+  const low = detections.filter((item) => item.severity === "low").length;
+  return {
+    total: detections.length,
+    high,
+    medium,
+    low,
+    railsAffected: new Set(detections.map((item) => item.rail_name).filter(Boolean)).size,
+  };
+}
+
+function getHarvestStageStats(items = []) {
+  const stageCounts = {
+    flower: 0,
+    unripe: 0,
+    midripe: 0,
+    ripe: 0,
+  };
+  for (const item of items) {
+    const stage = getHarvestStageInfo(item?.value).id;
+    if (stageCounts[stage] != null) stageCounts[stage] += 1;
+  }
+  return stageCounts;
+}
+
+function chooseDefaultLayerId(layers) {
+  const layerList = layers?.layers || [];
+  if (!layerList.length) return null;
+  const preferred = layerList.find((layer) => layer.id === "disease_pest_risk_v2_harvest")
+    || layerList.find((layer) => layer.id === "disease_pest_risk_v2");
+  return preferred?.id || layerList[0]?.id || null;
+}
+
+function formatPestMarkerTitle(detection) {
+  const bits = [detection.label || "병충해"];
+  if (detection.rail_name && detection.odom_x != null) {
+    bits.push(`${detection.rail_name} ${detection.odom_x.toFixed(1)}m`);
+  }
+  if (detection.camera && CAMERA_LABELS[detection.camera]) {
+    bits.push(CAMERA_LABELS[detection.camera]);
+  }
+  if (detection.confidence != null) {
+    bits.push(`신뢰도 ${Math.round(detection.confidence * 100)}%`);
+  }
+  return bits.join(" · ");
 }
 
 // ─── TileMap ─────────────────────────────────────────────────────────────────
@@ -480,20 +687,24 @@ function computeViewerMaxZoom(manifest, frames) {
 }
 
 class TileMap {
-  constructor({ container, tilePane, detailPane, annotationPane, overlayCanvas, manifest, frames, onSelect, onViewChange, maxZoom }) {
+  constructor({ container, tilePane, detailPane, annotationPane, markerPane, overlayCanvas, manifest, frames, pestDetections, onSelect, onViewChange, maxZoom }) {
     this.container = container;
     this.tilePane = tilePane;
     this.detailPane = detailPane;
     this.annotationPane = annotationPane;
+    this.markerPane = markerPane;
     this.overlayCanvas = overlayCanvas;
     this.ctx = overlayCanvas.getContext("2d");
     this.manifest = manifest;
     this.frames = frames;
+    this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
+    this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
     this.visibleDetails = new Map();
     this.visibleAnnotations = new Map();
+    this.visiblePestMarkers = new Map();
     this.prefetchedUrls = new Set();
     this.prefetchTimer = null;
     this.selectedFrameId = null;
@@ -548,9 +759,11 @@ class TileMap {
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
     for (const ann of this.visibleAnnotations.values()) ann.remove();
+    for (const marker of this.visiblePestMarkers.values()) marker.remove();
     this.visibleTiles.clear();
     this.visibleDetails.clear();
     this.visibleAnnotations.clear();
+    this.visiblePestMarkers.clear();
   }
 
   bind() {
@@ -589,6 +802,14 @@ class TileMap {
           }
           this.panBy(dx, dy);
         } else if (showLayerOverlay) {
+          if (isSegmentHoverDisabled()) {
+            if (hoveredSegmentId) {
+              hoveredSegmentId = null;
+              showSegmentTooltip(null);
+              this.queueRender();
+            }
+            return;
+          }
           const rect = this.container.getBoundingClientRect();
           const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
           const seg = this.pickSegment(world.x, world.y);
@@ -620,6 +841,7 @@ class TileMap {
           }
           const picked = this.pickFrame(world.x, world.y);
           if (picked) {
+            selectedPestDetectionId = null;
             this.selectedFrameId = picked.id;
             this.onSelect(picked);
             this.queueRender();
@@ -628,6 +850,11 @@ class TileMap {
       },
       pointerleave: () => {
         if (!this.drag) this.pointerAnchor = null;
+        if (hoveredSegmentId) {
+          hoveredSegmentId = null;
+          showSegmentTooltip(null);
+          this.queueRender();
+        }
       },
       dblclick: (event) => {
         const anchor = this.getAnchorFromEvent(event, { preferStored: true });
@@ -700,6 +927,15 @@ class TileMap {
     this.centerY = rect.center_y;
     this.selectedFrameId = frame.id;
     this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 1.2), this.minZoom, this.maxZoom);
+    this.updateViewTransform();
+    this.queueRender();
+  }
+
+  focusWorldPoint(worldX, worldY, { frameId = null, zoomFloor = this.manifest.max_zoom - 1.8 } = {}) {
+    this.centerX = worldX;
+    this.centerY = worldY;
+    if (frameId != null) this.selectedFrameId = frameId;
+    this.currentZoom = clamp(Math.max(this.currentZoom, zoomFloor), this.minZoom, this.maxZoom);
     this.updateViewTransform();
     this.queueRender();
   }
@@ -896,6 +1132,153 @@ class TileMap {
     }
   }
 
+  clearPestMarkers() {
+    for (const marker of this.visiblePestMarkers.values()) marker.remove();
+    this.visiblePestMarkers.clear();
+  }
+
+  isPestMarkerLayerActive() {
+    return showLayerOverlay
+      && ["disease_pest_risk_v2", "disease_pest_risk_v2_harvest"].includes(activeLayerId)
+      && this.pestDetections.available
+      && this.pestDetections.detections.length > 0;
+  }
+
+  findPestMarkerSegment(detection) {
+    const layer = getActiveLayer();
+    if (!layer || layer.id !== "disease_pest_risk") return null;
+    if (!detection.rail_name || detection.odom_x == null) return null;
+    return layer.items.find((item) =>
+      item.rail_name === detection.rail_name
+      && detection.odom_x >= item.start_m
+      && detection.odom_x <= item.end_m
+    ) || null;
+  }
+
+  getPestMarkerAnchor(frame, detection) {
+    const rect = frame.rect_px;
+    let anchorX = rect.center_x;
+    let anchorY = rect.top + rect.height * 0.22;
+    const cameraName = detection.camera;
+    if (!cameraName || !CAMERA_ORDER.includes(cameraName)) {
+      return { x: anchorX, y: anchorY };
+    }
+
+    const quadrantOffsets = {
+      front_left: { x: 0.0, y: 0.0 },
+      front_right: { x: 0.5, y: 0.0 },
+      rear: { x: 0.0, y: 0.5 },
+      side: { x: 0.5, y: 0.5 },
+    };
+    const quadrant = quadrantOffsets[cameraName];
+    let localX = quadrant.x + 0.25;
+    let localY = quadrant.y + 0.25;
+
+    const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
+    const camera = frame.cameras?.[cameraName];
+    if (bbox && camera?.width && camera?.height) {
+      const bboxCenterX = clamp((bbox[0] + bbox[2]) * 0.5 / camera.width, 0, 1);
+      const bboxCenterY = clamp((bbox[1] + bbox[3]) * 0.5 / camera.height, 0, 1);
+      localX = quadrant.x + bboxCenterX * 0.5;
+      localY = quadrant.y + bboxCenterY * 0.5;
+    }
+
+    anchorX = rect.left + rect.width * localX;
+    anchorY = rect.top + rect.height * localY;
+    return { x: anchorX, y: anchorY };
+  }
+
+  createPestMarker(detection) {
+    const button = document.createElement("button");
+    button.className = "pest-marker";
+    button.type = "button";
+    button.dataset.detectionId = detection.id;
+    button.dataset.frameId = String(detection.frame_id);
+
+    const iconWrap = document.createElement("span");
+    iconWrap.className = "pest-marker-icon-wrap";
+    iconWrap.setAttribute("aria-hidden", "true");
+
+    const icon = document.createElement("img");
+    icon.className = "pest-marker-icon";
+    icon.src = "/assets/hospital.png";
+    icon.alt = "";
+    icon.decoding = "async";
+    icon.loading = "lazy";
+    iconWrap.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.className = "pest-marker-label";
+    label.textContent = detection.label || "병충해";
+
+    button.append(iconWrap, label);
+    button.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const frame = this.framesById.get(String(detection.frame_id));
+      if (!frame) return;
+      selectedPestDetectionId = detection.id;
+      const segment = this.findPestMarkerSegment(detection);
+      selectedSegmentId = segment?.id || null;
+      hoveredSegmentId = segment?.id || null;
+      renderSegmentDetail(segment || null);
+      const anchor = this.getPestMarkerAnchor(frame, detection);
+      this.focusWorldPoint(anchor.x, anchor.y, { frameId: frame.id });
+      this.onSelect(frame);
+      this.queueRender();
+    });
+
+    this.markerPane?.appendChild(button);
+    return button;
+  }
+
+  renderPestMarkers() {
+    if (!this.markerPane) return;
+    if (!this.isPestMarkerLayerActive()) {
+      this.clearPestMarkers();
+      return;
+    }
+
+    const wanted = new Set();
+    const frameOffsets = new Map();
+    const compact = this.currentZoom < this.maxZoom - 1.4;
+    for (const detection of this.pestDetections.detections) {
+      const frame = this.framesById.get(String(detection.frame_id));
+      if (!frame) continue;
+
+      const anchor = this.getPestMarkerAnchor(frame, detection);
+      const screen = this.worldToScreen(anchor.x, anchor.y);
+      if (screen.x < -48 || screen.x > this.viewportWidth + 48) continue;
+      if (screen.y < -48 || screen.y > this.viewportHeight + 48) continue;
+
+      wanted.add(detection.id);
+      let marker = this.visiblePestMarkers.get(detection.id);
+      if (!marker) {
+        marker = this.createPestMarker(detection);
+        this.visiblePestMarkers.set(detection.id, marker);
+      }
+
+      const offsetIndex = frameOffsets.get(frame.id) || 0;
+      frameOffsets.set(frame.id, offsetIndex + 1);
+      const offsetX = (offsetIndex % 3) * 16 - 16;
+      const offsetY = Math.floor(offsetIndex / 3) * 14;
+      const selectedClass = selectedPestDetectionId === detection.id ? " is-selected" : "";
+      marker.className = `pest-marker severity-${detection.severity}${compact ? " is-compact" : ""}${selectedClass}`;
+      marker.style.left = `${screen.x + offsetX}px`;
+      marker.style.top = `${screen.y - offsetY}px`;
+      marker.setAttribute("aria-label", formatPestMarkerTitle(detection));
+    }
+
+    for (const [detectionId, marker] of this.visiblePestMarkers.entries()) {
+      if (wanted.has(detectionId)) continue;
+      marker.remove();
+      this.visiblePestMarkers.delete(detectionId);
+    }
+  }
+
   renderDetailFrames(bounds) {
     const fade = clamp((this.currentZoom - this.detailFadeStartZoom) / this.detailFadeSpan, 0, 1);
     this.detailPane.style.opacity = fade.toFixed(3);
@@ -997,6 +1380,7 @@ class TileMap {
 
     this.renderDetailFrames(bounds);
     this.renderAnnotations(bounds);
+    this.renderPestMarkers();
     this.drawOverlay();
     this.onViewChange({
       zoom: this.currentZoom,
@@ -1235,8 +1619,12 @@ class TileMap {
       const sh = br.y - tl.y;
       if (sw < 1 || sh < 1) continue;
 
-      // Low confidence → draw with hatch pattern feel (lower opacity)
-      const opacityMod = item.confidence < 0.6 ? 0.55 : 1.0;
+      const stageInfo = layer.color_scheme === "crop_stage"
+        ? getHarvestStageInfo(item.value)
+        : null;
+      const opacityMod = layer.color_scheme === "crop_stage"
+        ? 1.0
+        : (item.confidence < 0.6 ? 0.55 : 1.0);
 
       ctx.save();
       ctx.globalAlpha = opacityMod;
@@ -1244,6 +1632,12 @@ class TileMap {
       // Fill
       ctx.fillStyle = colorFn(item.value);
       ctx.fillRect(tl.x, tl.y, sw, sh);
+
+      if (stageInfo && sw >= 3 && sh >= 3) {
+        ctx.strokeStyle = hexToRgba(stageInfo.color, stageInfo.strokeAlpha);
+        ctx.lineWidth = Math.max(0.8, Math.min(1.2, Math.min(sw, sh) * 0.08));
+        ctx.strokeRect(tl.x + 0.5, tl.y + 0.5, Math.max(0, sw - 1), Math.max(0, sh - 1));
+      }
 
       // Selected / hovered border
       const isSelected = selectedSegmentId === item.id;
@@ -1830,6 +2224,8 @@ function renderLayersPanel(layers) {
         activeLayerId = layer.id;
         showLayerOverlay = true;
       }
+      hoveredSegmentId = null;
+      showSegmentTooltip(null);
       updateLayerRowStates();
       renderLayerLegend(layer);
       renderLayerSummary(layer);
@@ -1855,6 +2251,50 @@ function updateLayerRowStates() {
 function renderLayerLegend(layer) {
   const legend = document.getElementById("layerLegend");
   if (!layer) { legend.innerHTML = ""; return; }
+  if (layer.id === "disease_pest_risk_v2") {
+    const stats = getPestDetectionStats();
+    legend.innerHTML = `
+      <span class="legend-title">${layer.label} 범례</span>
+      <div class="layer-legend-pills">
+        <span class="layer-legend-pill">
+          <span class="layer-legend-marker severity-high"></span>
+          고위험 ${stats.high}건
+        </span>
+        <span class="layer-legend-pill">
+          <span class="layer-legend-marker severity-medium"></span>
+          주의 ${stats.medium}건
+        </span>
+        <span class="layer-legend-pill">
+          <span class="layer-legend-marker severity-low"></span>
+          낮음 ${stats.low}건
+        </span>
+      </div>
+    `;
+    return;
+  }
+  if (layer.id === "disease_pest_risk_v2_harvest") {
+    legend.innerHTML = `
+      <span class="legend-title">${layer.label} 범례</span>
+      <div class="layer-legend-pills">
+        ${["flower", "unripe", "midripe", "ripe"].map((stageId) => {
+          const stage = getHarvestStageInfo(
+            stageId === "flower" ? 0 : stageId === "unripe" ? 35 : stageId === "midripe" ? 60 : 90
+          );
+          return `
+            <span class="layer-legend-pill">
+              <span class="layer-legend-stage" style="background:${hexToRgba(stage.color, stage.legendAlpha)}"></span>
+              ${stage.label}
+            </span>
+          `;
+        }).join("")}
+        <span class="layer-legend-pill">
+          <img src="/assets/hospital.png" class="layer-legend-marker-icon" alt="">
+          병충해 마커
+        </span>
+      </div>
+    `;
+    return;
+  }
   const colorFn = COLOR_SCHEMES[layer.color_scheme] || COLOR_SCHEMES.yellow_red;
 
   const steps = [
@@ -1890,6 +2330,44 @@ function renderLayerSummary(layer) {
   const el = document.getElementById("layerSummary");
   if (!layer) { el.hidden = true; return; }
 
+  if (layer.id === "disease_pest_risk_v2") {
+    const stats = getPestDetectionStats();
+    el.hidden = false;
+    el.innerHTML = "";
+    for (const item of [
+      { value: stats.high, label: "고위험 마커", cls: "stat-bad" },
+      { value: stats.medium, label: "주의 마커", cls: "stat-warn" },
+      { value: stats.total, label: "총 마커", cls: "" },
+    ]) {
+      const stat = document.createElement("div");
+      stat.className = `layer-stat ${item.cls}`;
+      const val = createElement("strong", "layer-stat-value", String(item.value));
+      const lbl = createElement("span", "layer-stat-label", item.label);
+      stat.append(val, lbl);
+      el.appendChild(stat);
+    }
+    return;
+  }
+  if (layer.id === "disease_pest_risk_v2_harvest") {
+    const stageStats = getHarvestStageStats(layer.items || []);
+    const pestStats = getPestDetectionStats();
+    el.hidden = false;
+    el.innerHTML = "";
+    for (const item of [
+      { value: stageStats.ripe, label: "익음 구간", cls: "stat-bad" },
+      { value: stageStats.midripe, label: "덜익음 구간", cls: "stat-warn" },
+      { value: pestStats.total, label: "병충해 마커", cls: "" },
+    ]) {
+      const stat = document.createElement("div");
+      stat.className = `layer-stat ${item.cls}`;
+      const val = createElement("strong", "layer-stat-value", String(item.value));
+      const lbl = createElement("span", "layer-stat-label", item.label);
+      stat.append(val, lbl);
+      el.appendChild(stat);
+    }
+    return;
+  }
+
   const items = layer.items || [];
   const high = items.filter((i) => i.severity === "high").length;
   const medium = items.filter((i) => i.severity === "medium").length;
@@ -1919,7 +2397,7 @@ function renderLayerSummary(layer) {
 function showSegmentTooltip(item, screenX, screenY) {
   const tooltip = document.getElementById("segmentTooltip");
   if (!tooltip) return;
-  if (!item) {
+  if (!item || isSegmentHoverDisabled()) {
     tooltip.hidden = true;
     return;
   }
@@ -2364,13 +2842,15 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     layers = null;
   }
   if (loadToken !== currentSessionLoadToken) return null;
+  layers = normalizeLayersPayload(layers);
   currentLayers = layers;
   currentLayersData = layers;
   // Reset layer state for new session
-  activeLayerId = null;
-  showLayerOverlay = false;
+  activeLayerId = chooseDefaultLayerId(layers);
+  showLayerOverlay = Boolean(activeLayerId);
   selectedSegmentId = null;
   hoveredSegmentId = null;
+  selectedPestDetectionId = null;
 
   // Load tasks
   let tasks = null;
@@ -2400,6 +2880,15 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   if (loadToken !== currentSessionLoadToken) return null;
   currentCropSummary = cropSummary || buildCropPanelPlaceholder(sessionName);
 
+  let pestDetections = null;
+  try {
+    pestDetections = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/pest-detections`);
+  } catch (_) {
+    pestDetections = null;
+  }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentPestDetections = normalizePestDetections(pestDetections, sessionName);
+
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
   renderCropPanel(currentCropSummary);
@@ -2412,6 +2901,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   document.getElementById("tilePane").innerHTML = "";
   document.getElementById("detailPane").innerHTML = "";
   document.getElementById("annotationPane").innerHTML = "";
+  document.getElementById("markerPane").innerHTML = "";
   renderSegmentDetail(null);
   showSegmentTooltip(null);
 
@@ -2422,9 +2912,11 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     tilePane: document.getElementById("tilePane"),
     detailPane: document.getElementById("detailPane"),
     annotationPane: document.getElementById("annotationPane"),
+    markerPane: document.getElementById("markerPane"),
     overlayCanvas: document.getElementById("overlayCanvas"),
     manifest,
     frames,
+    pestDetections: currentPestDetections,
     maxZoom: computeViewerMaxZoom(manifest, frames),
     onSelect: (frame) => renderSelection(frame, currentInsightsData),
     onViewChange: ({ zoom, screenPxPerMeter }) => {
@@ -2436,8 +2928,8 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 
   renderAlertPanel(insights, map);
   renderLayersPanel(layers);
-  renderLayerLegend(null);
-  renderLayerSummary(null);
+  renderLayerLegend(getActiveLayer());
+  renderLayerSummary(getActiveLayer());
   renderTaskPanel(tasks, map);
   // Reset selection tabs
   selActiveTab = "info";
@@ -2530,6 +3022,8 @@ async function bootstrap() {
     activeSessionBtn = btn;
     btn.classList.add("is-active");
     currentCropSummary = buildCropPanelPlaceholder(sessionName);
+    currentPestDetections = normalizePestDetections(null, sessionName);
+    selectedPestDetectionId = null;
     renderCropPanel(currentCropSummary);
     summary.textContent = `${deviceName}/${sessionName} 로딩 중...`;
     try {
@@ -2566,6 +3060,8 @@ async function bootstrap() {
       } else {
         showLayerOverlay = false;
       }
+      hoveredSegmentId = null;
+      showSegmentTooltip(null);
       updateLayerRowStates();
       const layer = getActiveLayer();
       renderLayerLegend(layer);
