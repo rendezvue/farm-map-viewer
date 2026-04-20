@@ -71,3 +71,7 @@ class BuildConfig:
     @property
     def layers_path(self) -> Path:
         return self.output_dir / "layers.json"
+
+    @property
+    def dashboard_path(self) -> Path:
+        return self.output_dir / "dashboard.json"

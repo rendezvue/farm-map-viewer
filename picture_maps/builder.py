@@ -15,6 +15,7 @@ import torchvision.transforms.functional as TF
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
 from .config import BuildConfig
+from .dashboard import build_dashboard
 from .dataset import CAMERA_ORDER, scan_dataset
 from .insights import build_insights
 from .layers import build_layers
@@ -194,6 +195,8 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
     build_insights(config)
     print(f"  [{device_name}/{session_name}] building overlay layers ...", flush=True)
     build_layers(config, public_frames, dataset)
+    print(f"  [{device_name}/{session_name}] building operations dashboard ...", flush=True)
+    build_dashboard(config)
     return manifest
 
 

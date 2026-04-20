@@ -1,180 +1,300 @@
-# Farm Operations Dashboard (Picture Maps)
+# Farm Operations Dashboard
 
-`odom x`와 레일 간격으로 농장 사진을 슬리피맵 타일로 재구성하고, 헤리스틱 분석 기반의 **운영 의사결정 대시보드**를 제공합니다.
+농장 사진 세션을 타일 맵으로 재구성하고, 그 위에 운영 의사결정용 `Action Center`, 추이 차트, KPI, 관리자 리포트를 얹는 정적 대시보드입니다.
 
-핵심 방식:
+핵심 목표는 연구용 시각화가 아니라 다음 질문에 즉시 답하는 운영 화면입니다.
 
-- 입력: `/home/nas/rdv_md3/uv_camera_db/ubuntu/20260416_235959/` 같은 세션 폴더
-- 좌표: `EXIF UserComment`의 `odom_x=...` + `rail_index * 3m`
-- 배치: 같은 위치의 4카메라 이미지를 2x2 콘택트시트 한 셀로 구성
-- 렌더링: 전체 셀 그리드를 `z/x/y` PNG 타일 피라미드로 생성
-- 인사이트: 카메라 누락·데이터 공백·rail 점수를 헤리스틱으로 계산, 직전 세션 대비 delta 표시
-- 프론트: 타일 뷰어 + 운영 요약·알림 패널·위험도 오버레이·관리자 리포트
+- 오늘 어디를 먼저 점검해야 하는가
+- 어떤 rail / segment가 악화되고 있는가
+- 관리자에게 무엇을 공유해야 하는가
+- 지난 세션 대비 좋아졌는가 나빠졌는가
+
+현재 레포는 실센서/실AI 결과가 없어도 deterministic demo 데이터로 위 흐름이 동작하도록 구성되어 있습니다. 모든 데모 데이터는 UI와 API에 `demo`로 명시됩니다.
 
 ## 구조
 
 ```text
 farm-map-viewer/
 ├── picture_maps/
-│   ├── builder.py      # 타일 빌드, 빌드 후 insights 자동 생성
-│   ├── cli.py
-│   ├── config.py       # BuildConfig (insights_path 포함)
-│   ├── dataset.py
-│   ├── insights.py     # 헤리스틱 인사이트 엔진
-│   ├── server.py       # HTTP 서버 + insights/report API
-│   └── watcher.py
+│   ├── builder.py         # 타일 빌드 + insights/layers/dashboard 산출
+│   ├── cli.py             # build / serve 진입점
+│   ├── config.py          # BuildConfig, 산출물 경로 정의
+│   ├── dashboard.py       # NEW: tasks / trends / report / KPI demo generator
+│   ├── dataset.py         # 세션 폴더 스캔, rail/frame 좌표 추출
+│   ├── insights.py        # heuristic 인사이트 생성
+│   ├── layers.py          # 맵 오버레이 레이어 생성
+│   ├── server.py          # HTTP 서버 + API + runtime fallback
+│   └── watcher.py         # 새 세션 감시 / 재빌드
 ├── web/
-│   ├── app.js
-│   ├── index.html
-│   └── styles.css
+│   ├── index.html         # 정적 대시보드 레이아웃
+│   ├── app.js             # vanilla JS 렌더링 / 상태 연결 / map interaction
+│   └── styles.css         # 제품형 운영 대시보드 스타일 + print CSS
 └── build/
     └── <dataset_key>/
         ├── manifest.json
         ├── frames.json
+        ├── insights.json
+        ├── layers.json
+        ├── dashboard.json  # NEW: kpis/tasks/trends/report
         ├── server_index.json
-        ├── insights.json     ← NEW: 헤리스틱 분석 결과
         ├── cells/*.jpg
         └── tiles/<z>/<x>/<y>.jpg
 ```
 
+## 동작 계층
+
+### 1. Base map
+
+- `dataset.py`가 세션 디렉터리를 스캔합니다.
+- `builder.py`가 4카메라 이미지를 2x2 contact sheet 셀로 만든 뒤 타일 피라미드를 생성합니다.
+- `web/app.js`의 `TileMap`이 정적 타일과 디테일 이미지를 탐색합니다.
+
+### 2. Heuristic insights
+
+- `insights.py`가 카메라 누락, 데이터 공백, rail health/coverage, 세션 delta를 계산합니다.
+- 이 결과는 selection 패널, alert 패널, 기존 ops summary에 사용됩니다.
+
+### 3. Demo overlay layers
+
+- `layers.py`가 rail / segment 기반의 deterministic overlay 레이어를 생성합니다.
+- 현재 제공 레이어:
+  - `action_priority`
+  - `disease_pest_risk`
+  - `growth_status`
+  - `data_reliability`
+  - `harvest_readiness`
+
+### 4. Operations dashboard
+
+- `dashboard.py`가 `insights + layers + manifest + frames + build history`를 조합해서 아래를 생성합니다.
+  - Action Center 작업 목록
+  - rail / segment 추이 그래프용 시계열
+  - 운영 KPI 카드
+  - 관리자용 리포트 구조
+- 동일 모듈은 빌드 산출물이 없는 예전 세션에도 서버에서 runtime fallback으로 동작합니다.
+
+## 데모 데이터 원칙
+
+`dashboard.py`와 `layers.py`는 같은 세션을 다시 열어도 같은 결과가 나오도록 seed 기반으로 생성합니다.
+
+- seed 기준:
+  - `session_name`
+  - `dataset_key`
+  - `rail_name`
+  - `segment_id`
+- segment 분포:
+  - 실제 rail/frame/odom 좌표를 사용
+  - hot zone을 만들어 특정 rail 구간에 위험이 군집되도록 생성
+- 작업 우선순위:
+  - `high / medium / low`가 모두 나오도록 quota 기반으로 선택
+- 작업 상태:
+  - `todo / in_progress / done`이 deterministic cycle로 분포
+- 추이 그래프:
+  - 같은 device의 build 폴더 내 최근 세션명을 우선 사용
+  - 이전 세션이 부족하면 synthetic history로 보강
+- source 표기:
+  - API와 UI 모두 `demo` 또는 `DEMO` 배지를 표시
+
+## 새 API
+
+기존 API:
+
+- `GET /api/devices`
+- `GET /api/devices/:device/sessions/:session/manifest`
+- `GET /api/devices/:device/sessions/:session/frames`
+- `GET /api/devices/:device/sessions/:session/insights`
+- `GET /api/devices/:device/sessions/:session/layers`
+
+추가 API:
+
+- `GET /api/devices/:device/sessions/:session/tasks`
+- `GET /api/devices/:device/sessions/:session/trends`
+- `GET /api/devices/:device/sessions/:session/report`
+
+### `/tasks`
+
+Action Center가 사용하는 작업 목록입니다.
+
+```json
+{
+  "available": true,
+  "source": "demo",
+  "summary": {
+    "total": 16,
+    "todo": 8,
+    "in_progress": 3,
+    "done": 5,
+    "high": 6,
+    "medium": 6,
+    "low": 4,
+    "unresolved": 11
+  },
+  "items": [
+    {
+      "id": "task:disease_check:rail_026_00320_00360",
+      "title": "병충해 의심 구간 현장 확인",
+      "priority": "high",
+      "rail_name": "rail_026",
+      "start_m": 32.0,
+      "end_m": 36.0,
+      "segment_id": "rail_026_00320_00360",
+      "focus_frame_id": 1287,
+      "reason": "...",
+      "recommended_action": "...",
+      "due_label": "오늘",
+      "source": "demo",
+      "status": "todo",
+      "type": "disease_check"
+    }
+  ]
+}
+```
+
+### `/trends`
+
+rail 또는 segment 선택 시 차트가 갱신되도록 필요한 시계열을 제공합니다.
+
+```json
+{
+  "available": true,
+  "history": [
+    { "session": "20260416_181034", "label": "04/16", "is_current": false }
+  ],
+  "default_selection": {
+    "rail_name": "rail_026",
+    "segment_id": "rail_026_00320_00360"
+  },
+  "rails": {
+    "rail_026": {
+      "headline": "병충해 위험 재상승 구간",
+      "metrics": {
+        "health_score": {
+          "direction": "up_good",
+          "current_value": 54,
+          "delta": -6,
+          "summary": "최근 3회 연속 악화",
+          "points": [{ "label": "04/16", "value": 54, "is_current": true }]
+        }
+      }
+    }
+  }
+}
+```
+
+### `/report`
+
+웹 하단 리포트 섹션과 모달/인쇄 화면이 사용하는 구조입니다.
+
+```json
+{
+  "available": true,
+  "source": "demo",
+  "kpis": [
+    {
+      "id": "inspection_needed",
+      "label": "오늘 점검 필요 구간",
+      "value": 14,
+      "detail": "고위험 6개 포함",
+      "tone": "bad",
+      "action": "filter:inspection_needed"
+    }
+  ],
+  "report": {
+    "headline": "이번 주 우선 조치 rail과 악화 구간을 한눈에 볼 수 있는 운영 리포트",
+    "session_overview": { "summary": "..." },
+    "weekly_summary": { "summary": "...", "cards": [] },
+    "risk_sections": [],
+    "task_status": { "todo": 8, "in_progress": 3, "done": 5, "completion_rate": 31 },
+    "rail_status": [],
+    "delta": { "summary": "..." },
+    "recommended_actions": []
+  }
+}
+```
+
+## 프론트 렌더링 흐름
+
+`web/app.js`는 세션 로드 시 다음 순서로 데이터를 가져옵니다.
+
+1. `manifest`
+2. `frames`
+3. `insights`, `layers`, `tasks`, `trends`, `report`
+
+이후 아래 UI가 API 기반으로 연결됩니다.
+
+- `Action Center`
+  - 작업 카드 클릭 시 맵 포커스
+  - 상태 토글은 브라우저 `localStorage`에 세션 단위로 저장
+- `KPI strip`
+  - 카드 클릭 시 작업 필터 또는 리포트 섹션으로 이동
+- `Trend board`
+  - rail 클릭 / segment 클릭 / task 클릭에 반응
+- `Report surface`
+  - 화면 하단 상시 표시
+  - `리포트 보기` 버튼으로 모달 상세 보기
+  - `인쇄 / PDF 저장` 버튼 지원
+
 ## 실행
 
-빌드:
+### 빌드
 
 ```bash
-cd /home/rdv/picture-maps
-python3 -m picture_maps.cli build
+cd /root/farm-map-viewer
+python3 -m picture_maps.cli build --dataset /path/to/device/session
 ```
 
-서버 실행:
+### 서버
 
 ```bash
-cd /home/rdv/picture-maps
-python3 -m picture_maps.cli serve --host 0.0.0.0 --port 8090
+cd /root/farm-map-viewer
+python3 -m picture_maps.cli serve --dataset /path/to/device/session --host 0.0.0.0 --port 8090
 ```
 
-필요하면 다시 빌드하면서 실행:
+여러 디바이스/세션을 NAS 루트 기준으로 스캔하려면:
 
 ```bash
-python3 -m picture_maps.cli serve --rebuild
+python3 -m picture_maps.cli serve --db-root /path/to/db-root --host 0.0.0.0 --port 8090
 ```
 
-다른 세션을 쓸 때:
+## 실제 데이터로 교체하려면
 
-```bash
-python3 -m picture_maps.cli serve \
-  --dataset /home/nas/rdv_md3/uv_camera_db/ubuntu/20260416_235959
-```
+데모 로직을 모두 걷어낼 필요는 없고, 아래 레이어만 실제 JSON으로 바꾸면 됩니다.
 
-## 출력물
+### overlay를 실제 예측 결과로 교체
 
-`build/<dataset_key>/` 아래에 다음이 생성됩니다.
+- 파일: `picture_maps/layers.py`
+- 교체 대상:
+  - `_build_layer_items`
+  - `generate_demo_layers_runtime`
 
-- `manifest.json`: 지도 메타데이터
-- `frames.json`: 프론트에서 쓰는 프레임 정보
-- `server_index.json`: 원본 이미지 경로 인덱스
-- `insights.json`: 헤리스틱 분석 결과 (session/rail/frame/alerts/report)
-- `cells/*.jpg`: 위치별 2x2 콘택트시트
-- `tiles/<z>/<x>/<y>.jpg`: 슬리피맵 타일
+현재는 segment별 score/severity를 deterministic demo로 만듭니다. 실제 병해/생육/품질 모델 결과가 있으면 같은 shape의 `items`를 반환하면 됩니다.
 
-## insights.json 구조
+### 운영 작업/추이/리포트를 실제 운영 데이터로 교체
 
-```json
-{
-  "session": {
-    "device": "ubuntu",
-    "session": "20260416_182344",
-    "source": "heuristic",
-    "health_score": 98,
-    "coverage_score": 89,
-    "alert_count": 1,
-    "priority_rail_count": 0,
-    "gap_count": 0,
-    "missing_camera_frame_count": 1,
-    "delta": {
-      "compared_session": "20260416_181915",
-      "health_score": -2,
-      "coverage_score": -11,
-      "alert_count": 1
-    }
-  },
-  "rails": {
-    "rail_001": {
-      "health_score": 98, "coverage_score": 89,
-      "priority_score": 0, "issue_count": 1,
-      "flags": ["missing_camera"],
-      "recommendation": "카메라 누락 1개 프레임 점검 필요",
-      "delta": { "health_score": -2, "compared_session": "..." }
-    }
-  },
-  "frames": {
-    "3": {
-      "score": 78, "flags": ["missing_camera"],
-      "alert_ids": ["alert_0001"],
-      "recommendation": "카메라 누락 프레임 점검 필요: front_right"
-    }
-  },
-  "alerts": [
-    {
-      "id": "alert_0001", "severity": "warning",
-      "category": "missing_camera",
-      "title": "카메라 누락",
-      "message": "rail_001 @ -0.5m: front_right 카메라 이미지 없음",
-      "rail_name": "rail_001", "frame_id": 3,
-      "source": "heuristic"
-    }
-  ],
-  "report": { "session_overview": "...", "key_findings": [...], "recommended_actions": [...] }
-}
-```
+- 파일: `picture_maps/dashboard.py`
+- 교체 대상:
+  - `_build_tasks`
+  - `_build_trends`
+  - `_build_kpis`
+  - `_build_report`
 
-`source` 필드는 `"heuristic"`, `"external"`, `"heuristic+external"` 중 하나입니다.
-점수는 모두 0~100 범위입니다.
+현재는 `layers + insights`를 기반으로 deterministic demo를 합성합니다. 실제 작업 시스템, 센서 시계열, 병해 판정, 관리자 메모가 있으면 같은 JSON 구조를 채워서 API는 그대로 유지할 수 있습니다.
 
-## 외부 AI 결과 연동 (override)
+### 프론트는 그대로 재사용
 
-세션 폴더에 `insights_override.json`을 두면 빌드 시 헤리스틱 결과와 merge됩니다.
+- 파일: `web/app.js`
+- 조건:
+  - `/tasks`, `/trends`, `/report` 응답 구조만 유지
 
-```json
-{
-  "source": "disease_model_v1",
-  "alerts": [
-    {
-      "id": "ext_001", "severity": "error",
-      "category": "disease_suspicion",
-      "title": "병해 의심",
-      "message": "rail_003 @ 12.0m: 흰가루병 의심 (신뢰도 0.82)",
-      "rail_name": "rail_003", "frame_id": 142
-    }
-  ],
-  "frames": {
-    "142": { "score": 30, "flags": ["disease_suspicion"], "recommendation": "즉시 현장 확인 필요" }
-  },
-  "rails": {
-    "rail_003": { "health_score": 40, "priority_score": 80, "flags": ["disease_suspicion"] }
-  },
-  "session": { "health_score": 65 }
-}
-```
+렌더러는 이미 API 기반으로 동작하므로, 백엔드 JSON만 교체하면 화면은 그대로 동작합니다.
 
-**Merge 규칙:**
-- `alerts`: 외부 alerts가 기존 목록에 추가됩니다
-- `frames`: score는 heuristic과 external 중 낮은 값 채택, flags는 합집합
-- `rails`: score 필드는 외부 값으로 덮어씁니다 (신뢰 우선)
-- `session`: health_score/coverage_score만 덮어씁니다
-- 외부 override 없이도 앱은 완전히 동작합니다
+## 검증 메모
 
-## 새 API 엔드포인트
+이번 구조에서는 다음을 최소 검증 대상으로 봅니다.
 
-| 경로 | 설명 |
-|------|------|
-| `GET /api/devices/:device/sessions/:session/insights` | session/rail/frame/alerts 전체 |
-| `GET /api/devices/:device/sessions/:session/report` | 관리자용 report 요약 |
+- `python -m compileall picture_maps`
+- 서버 기동
+- `/layers`, `/tasks`, `/trends`, `/report` 응답 확인
+- 정적 HTML 응답 확인
 
-응답에 `"available": false`이면 insights.json이 없는 세션입니다 (앱은 정상 동작).
-
-## 비고
-
-- `odom y`가 없으므로 `rail_001`, `rail_002`, ... 순서로 `3m` 간격의 가상 횡축을 만듭니다.
-- 실제 지도 좌표와 완전히 같은 정사영상이 아니고, 농장 운영용 탐색/검수에 맞춘 커스텀 로컬 타일 맵입니다.
-- 외부 ML 모델 결과는 `insights_override.json`으로 주입하면 기존 헤리스틱 결과와 blend됩니다.
+브라우저 JS 문법 검사는 일반적으로 `node --check web/app.js`로 할 수 있지만, 현재 환경에 `node`가 없으면 해당 단계는 생략될 수 있습니다.

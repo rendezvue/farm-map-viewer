@@ -55,6 +55,23 @@
           <div class="session-list" id="sessionList"></div>
         </section>
 
+        <section class="panel panel-action-center" id="actionCenterPanel" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>Action Center</h2>
+              <p class="panel-subcopy">오늘 바로 움직여야 하는 작업</p>
+            </div>
+            <div class="panel-head-badges">
+              <span class="pill" id="taskSummaryPill">0</span>
+              <span class="demo-badge">DEMO</span>
+            </div>
+          </div>
+          <div class="action-center-meta" id="actionCenterMeta"></div>
+          <div class="task-filter-row" id="taskFilterRow"></div>
+          <div class="task-list" id="taskList"></div>
+          <div class="task-empty" id="taskEmpty" hidden>표시할 작업이 없습니다.</div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Rails</h2>
@@ -111,10 +128,27 @@
             <button id="zoomInButton" type="button">+</button>
             <button id="toggleOverlayButton" type="button" title="위험도 오버레이 토글">위험도</button>
             <button id="toggleLayersButton" type="button" title="분석 레이어 패널 토글" class="layer-toggle-btn">레이어</button>
-            <button id="reportButton" type="button" class="report-btn">리포트</button>
+            <button id="trendJumpButton" type="button" class="trend-jump-btn">추이 보기</button>
+            <button id="reportButton" type="button" class="report-btn">리포트 보기</button>
             <button id="reloadButton" type="button">새로고침</button>
           </div>
         </header>
+
+        <section class="kpi-strip" id="kpiStrip" hidden></section>
+
+        <section class="panel panel-trends" id="trendPanel" hidden>
+          <div class="panel-head">
+            <div>
+              <h2>구간 / 레일 추이</h2>
+              <p class="panel-subcopy" id="trendContext">선택한 rail 또는 segment의 변화 흐름</p>
+            </div>
+            <div class="panel-head-badges">
+              <span class="pill" id="trendHistoryPill">-</span>
+              <span class="demo-badge">DEMO</span>
+            </div>
+          </div>
+          <div class="trend-grid" id="trendGrid"></div>
+        </section>
 
         <section class="map-card">
           <div id="mapViewport" class="map-viewport">
@@ -138,6 +172,20 @@
             </div>
           </div>
         </section>
+
+        <section class="panel report-surface" id="reportSurface" hidden>
+          <div class="panel-head report-surface-head">
+            <div>
+              <h2>운영 리포트</h2>
+              <p class="panel-subcopy">관리자에게 바로 공유할 수 있는 세션 요약</p>
+            </div>
+            <div class="report-surface-actions">
+              <button class="ghost-button" id="reportSurfaceView" type="button">리포트 보기</button>
+              <button class="ghost-button" id="reportSurfacePrint" type="button">인쇄 / PDF 저장</button>
+            </div>
+          </div>
+          <div id="reportSurfaceBody"></div>
+        </section>
       </main>
     </div>
 
@@ -153,6 +201,19 @@
           </div>
         </div>
         <div id="reportBody" class="report-body"></div>
+      </div>
+    </div>
+
+    <div id="trendModal" class="report-modal trend-modal" hidden>
+      <div class="report-modal-backdrop" id="trendBackdrop"></div>
+      <div class="report-modal-content trend-modal-content">
+        <div class="report-header">
+          <h2>구간 / 레일 추이</h2>
+          <div class="report-actions">
+            <button class="ghost-button trend-close" id="trendClose" type="button">닫기</button>
+          </div>
+        </div>
+        <div id="trendModalBody" class="report-body"></div>
       </div>
     </div>
 

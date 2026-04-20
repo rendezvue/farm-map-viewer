@@ -59,6 +59,42 @@ function deltaText(delta) {
   return delta > 0 ? `+${delta}` : String(delta);
 }
 
+function formatDelta(value) {
+  if (value == null || Number.isNaN(value)) return "-";
+  return value > 0 ? `+${value}` : String(value);
+}
+
+function metricImprovementDelta(metric) {
+  if (!metric) return 0;
+  return metric.direction === "down_good" ? -(metric.delta || 0) : (metric.delta || 0);
+}
+
+function statusLabel(status) {
+  return {
+    todo: "대기",
+    in_progress: "진행 중",
+    done: "완료",
+  }[status] || status || "-";
+}
+
+function priorityLabel(priority) {
+  return {
+    high: "HIGH",
+    medium: "MED",
+    low: "LOW",
+  }[priority] || priority || "-";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
 // ─── Insights store ───────────────────────────────────────────────────────────
 
 let currentInsights = null;
@@ -71,6 +107,9 @@ let activeLayerId = null;          // which layer is rendered on map
 let showLayerOverlay = false;      // overlay on/off
 let hoveredSegmentId = null;
 let selectedSegmentId = null;
+let selectedRailName = null;
+let selectedTaskId = null;
+let activeTaskFilter = "all";
 
 const COLOR_SCHEMES = {
   yellow_red: (v) => {
@@ -290,6 +329,7 @@ class TileMap {
             if (seg) {
               selectedSegmentId = seg.id;
               renderSegmentDetail(seg);
+              applySegmentFocus(seg, { focusMap: false, showSelection: true });
               this.queueRender();
               return;
             }
@@ -298,6 +338,7 @@ class TileMap {
           if (picked) {
             this.selectedFrameId = picked.id;
             this.onSelect(picked);
+            applyFrameFocus(picked, { focusMap: false });
             this.queueRender();
           }
         }
@@ -376,6 +417,22 @@ class TileMap {
     this.centerY = rect.center_y;
     this.selectedFrameId = frame.id;
     this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 1.2), this.minZoom, this.maxZoom);
+    this.updateViewTransform();
+    this.queueRender();
+  }
+
+  focusSegment(item) {
+    const rail = this.manifest.rails.find((entry) => entry.name === item.rail_name);
+    if (!rail) return;
+    const layout = this.manifest.layout;
+    const world = this.manifest.world;
+    const left = layout.margin_x + rail.rail_y_m * layout.px_per_meter_x;
+    const right = left + layout.cell_width;
+    const top = layout.margin_y + (item.start_m - world.odom_x_min) * layout.px_per_meter_y;
+    const bottom = layout.margin_y + (item.end_m - world.odom_x_min) * layout.px_per_meter_y;
+    this.centerX = (left + right) / 2;
+    this.centerY = (top + bottom) / 2;
+    this.currentZoom = clamp(Math.max(this.currentZoom, this.manifest.max_zoom - 2.1), this.minZoom, this.maxZoom);
     this.updateViewTransform();
     this.queueRender();
   }
@@ -956,6 +1013,209 @@ async function fetchJson(path) {
   return response.json();
 }
 
+function getTaskStorageKey() {
+  if (!currentDeviceName || !currentSessionName) return null;
+  return `farm-map-viewer:tasks:${currentDeviceName}:${currentSessionName}`;
+}
+
+function loadTaskOverrides() {
+  const key = getTaskStorageKey();
+  if (!key) return {};
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveTaskOverrides() {
+  const key = getTaskStorageKey();
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(taskStatusOverrides));
+  } catch (_) {
+    // ignore storage failures
+  }
+}
+
+function getTaskStatus(task) {
+  return taskStatusOverrides[task.id] || task.status;
+}
+
+function getTasksWithStatus() {
+  if (!currentTasksData?.items) return [];
+  return currentTasksData.items.map((task) => ({
+    ...task,
+    effective_status: getTaskStatus(task),
+  }));
+}
+
+function getTasksByFilter(filterId = activeTaskFilter) {
+  const items = getTasksWithStatus();
+  if (filterId === "inspection_needed") {
+    return items.filter((task) => task.effective_status !== "done" && task.priority !== "low");
+  }
+  if (filterId === "high_risk") {
+    return items.filter((task) => task.priority === "high");
+  }
+  if (filterId === "unresolved") {
+    return items.filter((task) => task.effective_status !== "done");
+  }
+  if (filterId === "data_gap") {
+    return items.filter((task) => task.type === "recapture" || task.type === "camera_check");
+  }
+  return items;
+}
+
+function findFrameById(frameId) {
+  return currentFramesData.find((frame) => frame.id === frameId) || null;
+}
+
+function findSegmentById(segmentId) {
+  if (!currentTrendsData?.segments || !segmentId) return null;
+  return currentTrendsData.segments[segmentId] || null;
+}
+
+function getFocusFrameForRail(railName) {
+  return currentFramesData.find((frame) => frame.rail_name === railName) || null;
+}
+
+function closestFrameForSegment(segment) {
+  if (!segment) return null;
+  if (segment.focus_frame_id != null) {
+    const frame = findFrameById(segment.focus_frame_id);
+    if (frame) return frame;
+  }
+  if (segment.frame_ids?.length) {
+    const frame = findFrameById(segment.frame_ids[Math.floor(segment.frame_ids.length / 2)]);
+    if (frame) return frame;
+  }
+  return currentFramesData.find(
+    (frame) => frame.rail_name === segment.rail_name && frame.odom_x >= segment.start_m && frame.odom_x <= segment.end_m,
+  ) || getFocusFrameForRail(segment.rail_name);
+}
+
+function setActiveTaskFilter(filterId) {
+  activeTaskFilter = filterId || "all";
+  renderActionCenter(currentTasksData);
+}
+
+let trendPanelPulseTimer = null;
+
+function pulseTrendPanel() {
+  const panel = document.getElementById("trendPanel");
+  if (!panel || panel.hidden) return;
+  panel.classList.remove("is-emphasis");
+  void panel.offsetWidth;
+  panel.classList.add("is-emphasis");
+  if (trendPanelPulseTimer) window.clearTimeout(trendPanelPulseTimer);
+  trendPanelPulseTimer = window.setTimeout(() => {
+    panel.classList.remove("is-emphasis");
+  }, 1400);
+}
+
+function revealTrendPanel() {
+  const panel = document.getElementById("trendPanel");
+  if (!panel || panel.hidden) return;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  pulseTrendPanel();
+}
+
+async function ensureTrendsDataLoaded() {
+  if (currentTrendsData?.history?.length) return currentTrendsData;
+  if (!currentDeviceName || !currentSessionName) return null;
+  try {
+    const trends = await fetchJson(`/api/devices/${currentDeviceName}/sessions/${currentSessionName}/trends`);
+    currentTrendsData = trends;
+    renderTrendPanel(trends);
+    return trends;
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveTrendFocus(trends) {
+  if (!trends?.history?.length) return null;
+  const segment = selectedSegmentId ? trends.segments?.[selectedSegmentId] : null;
+  const railName = segment?.rail_name || selectedRailName || trends.default_selection?.rail_name || Object.keys(trends.rails || {})[0];
+  const railEntry = railName ? trends.rails?.[railName] : null;
+  const focusEntry = segment || railEntry;
+  if (!focusEntry) return null;
+  return { segment, railName, railEntry, focusEntry };
+}
+
+function buildTrendCardsHTML(focusEntry) {
+  const metricOrder = ["health_score", "disease_pest_risk", "growth_status", "data_reliability"];
+  return metricOrder.map((metricId) => {
+    const metric = focusEntry.metrics?.[metricId];
+    const delta = formatDelta(metric?.delta || 0);
+    const improvement = metricImprovementDelta(metric);
+    const tone = improvement > 2 ? "good" : improvement < -2 ? "bad" : "neutral";
+    return `
+      <article class="trend-card tone-${tone}">
+        <div class="trend-card-head">
+          <div>
+            <span class="trend-card-label">${escapeHtml(metric?.label || metricId)}</span>
+            <strong class="trend-card-value">${escapeHtml(metric?.current_value ?? "-")}</strong>
+          </div>
+          <span class="trend-card-delta">${escapeHtml(delta)}</span>
+        </div>
+        <div class="trend-card-chart">${buildSparklineSVG(metric)}</div>
+        <p class="trend-card-summary">${escapeHtml(metric?.summary || "변동 없음")}</p>
+      </article>
+    `;
+  }).join("");
+}
+
+function buildTrendHistoryHTML(trends, focusEntry) {
+  return `
+    <div class="trend-history-row">
+      ${(trends.history || []).map((item, index) => {
+        const healthValue = focusEntry.metrics?.health_score?.points?.[index]?.value;
+        return `
+          <div class="trend-history-chip ${item.is_current ? "is-current" : ""}">
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(healthValue ?? "-")}</strong>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+async function openTrendModal() {
+  const trends = await ensureTrendsDataLoaded();
+  const modal = document.getElementById("trendModal");
+  const body = document.getElementById("trendModalBody");
+  const resolved = resolveTrendFocus(trends);
+  if (!resolved) {
+    body.innerHTML = "<p>추이 데이터를 불러오지 못했습니다.</p>";
+  } else {
+    const { segment, railName, focusEntry } = resolved;
+    const context = segment
+      ? `${segment.rail_name} ${segment.start_m.toFixed(1)}-${segment.end_m.toFixed(1)}m 구간의 추이`
+      : `${railName} rail의 최근 운영 추이`;
+    body.innerHTML = `
+      <div class="trend-modal-copy">
+        <p class="report-demo-note">DEMO trend data</p>
+        <h3>${escapeHtml(context)}</h3>
+        <p class="trend-modal-summary">선택 대상의 최근 ${escapeHtml(trends.history.length)}회 변화를 운영 지표 기준으로 요약합니다.</p>
+      </div>
+      ${buildTrendHistoryHTML(trends, focusEntry)}
+      <div class="trend-grid">${buildTrendCardsHTML(focusEntry)}</div>
+    `;
+  }
+  modal.hidden = false;
+  syncModalOpenState();
+}
+
+function closeTrendModal() {
+  const modal = document.getElementById("trendModal");
+  modal.hidden = true;
+  syncModalOpenState();
+}
+
 // ─── Ops summary rendering ───────────────────────────────────────────────────
 
 function renderOpsSummary(insights) {
@@ -1035,8 +1295,8 @@ function renderAlertPanel(insights, map) {
       const frames = map.frames;
       const targetFrame = frames.find((f) => f.id === alert.frame_id);
       if (targetFrame) {
-        map.focusFrame(targetFrame);
         renderSelection(targetFrame, insights);
+        applyFrameFocus(targetFrame, { focusMap: true, revealTrend: true });
       }
     });
 
@@ -1094,8 +1354,8 @@ function renderRailList(manifest, frames, map, insights) {
     button.addEventListener("click", () => {
       const frame = frames.find((item) => item.rail_name === rail.name);
       if (!frame) return;
-      map.focusFrame(frame);
       renderSelection(frame, insights);
+      applyFrameFocus(frame, { focusMap: true, revealTrend: true });
     });
     railList.appendChild(button);
   }
@@ -1185,6 +1445,7 @@ function renderSelection(frame, insights) {
   const selectionMeta = document.getElementById("selectionMeta");
   const contactSheet = document.getElementById("contactSheet");
   const cameraGrid = document.getElementById("cameraGrid");
+  selectedRailName = frame.rail_name;
   pill.textContent = frame.rail_name;
   selectionMeta.innerHTML = "";
   selectionMeta.appendChild(buildSelectionMeta(frame));
@@ -1210,69 +1471,120 @@ function renderSelection(frame, insights) {
 
 // ─── Report rendering ─────────────────────────────────────────────────────────
 
-function buildReportHTML(insights) {
-  if (!insights || !insights.available) {
-    return "<p>이 세션의 인사이트 데이터가 없습니다.</p>";
+function buildReportHTML(payload) {
+  if (!payload?.report) {
+    return "<p>이 세션의 운영 리포트 데이터가 없습니다.</p>";
   }
-  const s = insights.session;
-  const r = insights.report || {};
+
+  const report = payload.report;
+  const kpis = getKpiEntries();
   const now = new Date().toLocaleString("ko-KR");
+  const taskSummary = getTaskStatusSummary();
+  const completionRate = taskSummary.total ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0;
 
-  const railRows = (r.rail_status || []).map((rail) => {
-    const flagStr = rail.flags?.length ? rail.flags.map((f) => FLAG_LABELS[f] || f).join(", ") : "-";
-    const recStr = rail.recommendation || "-";
-    return `<tr class="${rail.priority_score >= 20 ? "row-priority" : ""}">
-      <td>${rail.rail_name}</td>
-      <td class="${scoreColor(rail.health_score)}">${rail.health_score}</td>
-      <td class="${scoreColor(rail.coverage_score)}">${rail.coverage_score}</td>
-      <td>${rail.issue_count}</td>
-      <td>${flagStr}</td>
-      <td>${recStr}</td>
-    </tr>`;
-  }).join("");
+  const kpiHtml = kpis.map((item) => `
+    <div class="report-stat tone-${escapeHtml(item.tone || "neutral")}">
+      <strong>${escapeHtml(item.value)}</strong>
+      <span>${escapeHtml(item.label)}</span>
+    </div>
+  `).join("");
 
-  const findingsHTML = (r.key_findings || []).map((f) => `<li>${f}</li>`).join("") || "<li>이상 없음</li>";
-  const actionsHTML = (r.recommended_actions || []).map((a) => `<li>${a}</li>`).join("") || "<li>권장 액션 없음</li>";
+  const riskRows = (report.risk_sections || []).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.rail_name)}</td>
+      <td>${escapeHtml(item.range_label)}</td>
+      <td>${escapeHtml(item.headline)}</td>
+      <td>${escapeHtml(item.reason)}</td>
+      <td>${escapeHtml(item.recommended_action)}</td>
+    </tr>
+  `).join("");
 
-  const deltaHTML = s.delta?.compared_session
-    ? `<p class="report-delta">직전 세션(${s.delta.compared_session}) 대비: health ${s.delta.health_score >= 0 ? "+" : ""}${s.delta.health_score}점, alerts ${s.delta.alert_count >= 0 ? "+" : ""}${s.delta.alert_count}건</p>`
-    : "";
+  const railRows = (report.rail_status || []).map((row) => `
+    <tr>
+      <td>${escapeHtml(row.rail_name)}</td>
+      <td class="${scoreColor(row.health_score)}">${escapeHtml(row.health_score)}</td>
+      <td class="${scoreColor(100 - row.disease_pest_risk)}">${escapeHtml(row.disease_pest_risk)}</td>
+      <td class="${scoreColor(row.growth_status)}">${escapeHtml(row.growth_status)}</td>
+      <td class="${scoreColor(row.data_reliability)}">${escapeHtml(row.data_reliability)}</td>
+      <td>${escapeHtml(row.unresolved_tasks)}</td>
+      <td>${escapeHtml(row.trend_summary)}</td>
+      <td>${escapeHtml(row.recommendation)}</td>
+    </tr>
+  `).join("");
+
+  const actionsHtml = (report.recommended_actions || []).map((item) => `
+    <li><strong>${escapeHtml(item.headline)}</strong> ${escapeHtml(item.detail)}</li>
+  `).join("") || "<li>권장 액션 없음</li>";
+
+  const notesHtml = (report.manager_notes || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const weeklyCards = (report.weekly_summary?.cards || []).map((card) => `
+    <div class="report-stat tone-${escapeHtml(card.tone || "neutral")}">
+      <strong>${escapeHtml(card.value)}</strong>
+      <span>${escapeHtml(card.label)}</span>
+    </div>
+  `).join("");
 
   return `
 <div class="report-section">
   <h3>세션 개요</h3>
-  <p>${r.session_overview || ""}</p>
-  <p class="report-meta">분석 시각: ${s.generated_at || "-"} | 출력 시각: ${now} | 분석 방식: <strong>${s.source || "heuristic"}</strong></p>
-  ${deltaHTML}
+  <p>${escapeHtml(report.session_overview?.summary || "")}</p>
+  <p class="report-meta">출력 시각: ${escapeHtml(now)} | 데이터 출처: <strong>${escapeHtml(payload.source || payload.session?.demo_notice || "demo")}</strong></p>
+  <p class="report-delta">${escapeHtml(report.delta?.summary || "직전 비교 없음")}</p>
 </div>
 
 <div class="report-section">
-  <h3>Alert 요약</h3>
-  <div class="report-alert-summary">
-    <div class="report-stat"><strong>${r.alert_summary?.total ?? 0}</strong><span>전체</span></div>
-    <div class="report-stat report-stat-error"><strong>${r.alert_summary?.error ?? 0}</strong><span>오류</span></div>
-    <div class="report-stat report-stat-warn"><strong>${r.alert_summary?.warning ?? 0}</strong><span>경고</span></div>
-    <div class="report-stat report-stat-info"><strong>${r.alert_summary?.info ?? 0}</strong><span>정보</span></div>
+  <h3>운영 KPI</h3>
+  <div class="report-alert-summary">${kpiHtml}</div>
+</div>
+
+<div class="report-section">
+  <h3>주간 운영 요약</h3>
+  <p>${escapeHtml(report.weekly_summary?.summary || "")}</p>
+  <div class="report-alert-summary">${weeklyCards}</div>
+</div>
+
+<div class="report-section">
+  <h3>주요 위험 구간</h3>
+  <div class="report-table-wrap">
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Rail</th>
+          <th>구간</th>
+          <th>핵심 이슈</th>
+          <th>판단 근거</th>
+          <th>권장 액션</th>
+        </tr>
+      </thead>
+      <tbody>${riskRows}</tbody>
+    </table>
   </div>
 </div>
 
 <div class="report-section">
-  <h3>주요 발견 사항</h3>
-  <ul>${findingsHTML}</ul>
+  <h3>작업 완료 / 미완료 현황</h3>
+  <div class="report-alert-summary">
+    <div class="report-stat"><strong>${taskSummary.todo}</strong><span>대기</span></div>
+    <div class="report-stat"><strong>${taskSummary.in_progress}</strong><span>진행 중</span></div>
+    <div class="report-stat"><strong>${taskSummary.done}</strong><span>완료</span></div>
+    <div class="report-stat"><strong>${completionRate}%</strong><span>완료율</span></div>
+  </div>
 </div>
 
 <div class="report-section">
-  <h3>Rail 별 상태</h3>
+  <h3>레일별 상태표</h3>
   <div class="report-table-wrap">
     <table class="report-table">
       <thead>
         <tr>
           <th>Rail</th>
           <th>Health</th>
-          <th>Coverage</th>
-          <th>이슈</th>
-          <th>플래그</th>
-          <th>권장 조치</th>
+          <th>병충해 위험</th>
+          <th>생육 안정성</th>
+          <th>데이터 신뢰도</th>
+          <th>미해결</th>
+          <th>변화</th>
+          <th>권장 액션</th>
         </tr>
       </thead>
       <tbody>${railRows}</tbody>
@@ -1282,39 +1594,33 @@ function buildReportHTML(insights) {
 
 <div class="report-section">
   <h3>운영 권장 액션</h3>
-  <ol>${actionsHTML}</ol>
+  <ol>${actionsHtml}</ol>
 </div>
 
 <div class="report-section">
-  <h3>Alert 상세 목록</h3>
-  ${insights.alerts?.length
-    ? `<table class="report-table">
-        <thead><tr><th>심각도</th><th>카테고리</th><th>메시지</th><th>Rail</th></tr></thead>
-        <tbody>${insights.alerts.map((a) => `
-          <tr class="alert-row-${a.severity}">
-            <td>${a.severity}</td>
-            <td>${a.category}</td>
-            <td>${a.message}</td>
-            <td>${a.rail_name || "-"}</td>
-          </tr>`).join("")}
-        </tbody>
-      </table>`
-    : "<p>Alert 없음</p>"}
+  <h3>관리 메모</h3>
+  <ul>${notesHtml}</ul>
 </div>`;
 }
 
-function openReport(insights) {
+function syncModalOpenState() {
+  const reportHidden = document.getElementById("reportModal")?.hidden !== false;
+  const trendHidden = document.getElementById("trendModal")?.hidden !== false;
+  document.body.classList.toggle("modal-open", !(reportHidden && trendHidden));
+}
+
+function openReport(payload) {
   const modal = document.getElementById("reportModal");
   const body = document.getElementById("reportBody");
-  body.innerHTML = buildReportHTML(insights);
+  body.innerHTML = buildReportHTML(payload);
   modal.hidden = false;
-  document.body.classList.add("modal-open");
+  syncModalOpenState();
 }
 
 function closeReport() {
   const modal = document.getElementById("reportModal");
   modal.hidden = true;
-  document.body.classList.remove("modal-open");
+  syncModalOpenState();
 }
 
 // ─── Layer panel rendering ────────────────────────────────────────────────────
@@ -1511,6 +1817,8 @@ function renderSegmentDetail(item) {
     selectedSegmentId = null;
     el.hidden = true;
     currentMap?.queueRender();
+    renderTrendPanel(currentTrendsData);
+    renderReportSurface(currentReportData);
   });
   header.append(layerLabel, demoBadge, closeBtn);
   el.appendChild(header);
@@ -1641,12 +1949,432 @@ function renderLayerQuickSummary(layers) {
   }
 }
 
+function getTaskStatusSummary() {
+  const items = getTasksWithStatus();
+  return {
+    total: items.length,
+    todo: items.filter((task) => task.effective_status === "todo").length,
+    in_progress: items.filter((task) => task.effective_status === "in_progress").length,
+    done: items.filter((task) => task.effective_status === "done").length,
+    unresolved: items.filter((task) => task.effective_status !== "done").length,
+  };
+}
+
+function getKpiEntries() {
+  const base = currentReportData?.kpis || [];
+  const taskSummary = getTaskStatusSummary();
+  return base.map((item) => {
+    if (item.id === "unresolved_tasks") {
+      return {
+        ...item,
+        value: taskSummary.unresolved,
+        detail: `진행 중 ${taskSummary.in_progress} / 완료 ${taskSummary.done}`,
+        tone: taskSummary.unresolved >= 8 ? "bad" : taskSummary.unresolved >= 4 ? "warn" : "good",
+      };
+    }
+    return item;
+  });
+}
+
+function applyFrameFocus(frame, { focusMap = true, revealTrend = false } = {}) {
+  if (!frame) return;
+  selectedRailName = frame.rail_name;
+  selectedSegmentId = null;
+  selectedTaskId = null;
+  setActiveRail(frame.rail_name);
+  document.getElementById("segmentDetail").hidden = true;
+  if (focusMap) {
+    currentMap?.focusFrame(frame);
+  }
+  renderTrendPanel(currentTrendsData);
+  renderReportSurface(currentReportData);
+  if (revealTrend) revealTrendPanel();
+  else pulseTrendPanel();
+}
+
+function applySegmentFocus(segment, { focusMap = true, showSelection = true, revealTrend = false } = {}) {
+  if (!segment) return;
+  selectedSegmentId = segment.segment_id || segment.id;
+  selectedRailName = segment.rail_name;
+  setActiveRail(segment.rail_name);
+  if (focusMap) {
+    currentMap?.focusSegment({
+      rail_name: segment.rail_name,
+      start_m: segment.start_m,
+      end_m: segment.end_m,
+    });
+  }
+  const frame = closestFrameForSegment(segment);
+  if (frame && showSelection) {
+    currentMap && (currentMap.selectedFrameId = frame.id);
+    renderSelection(frame, currentInsightsData);
+  }
+  renderTrendPanel(currentTrendsData);
+  renderReportSurface(currentReportData);
+  if (revealTrend) revealTrendPanel();
+  else pulseTrendPanel();
+}
+
+function applyTaskFocus(task) {
+  if (!task) return;
+  selectedTaskId = task.id;
+  const segment = findSegmentById(task.segment_id);
+  if (segment) {
+    applySegmentFocus(segment, { focusMap: true, showSelection: true, revealTrend: true });
+  } else {
+    const frame = findFrameById(task.focus_frame_id) || getFocusFrameForRail(task.rail_name);
+    if (frame) {
+      applyFrameFocus(frame, { focusMap: true, revealTrend: true });
+      renderSelection(frame, currentInsightsData);
+    }
+  }
+  renderActionCenter(currentTasksData);
+}
+
+function toggleTaskStatus(taskId) {
+  const task = currentTasksData?.items?.find((entry) => entry.id === taskId);
+  if (!task) return;
+  const currentStatus = getTaskStatus(task);
+  const nextStatus = currentStatus === "todo" ? "in_progress" : currentStatus === "in_progress" ? "done" : "todo";
+  taskStatusOverrides[taskId] = nextStatus;
+  saveTaskOverrides();
+  renderActionCenter(currentTasksData);
+  renderKpiStrip(currentReportData);
+  renderReportSurface(currentReportData);
+}
+
+function handleKpiAction(action) {
+  if (!action) return;
+  if (action.startsWith("filter:")) {
+    const filterId = action.split(":")[1];
+    setActiveTaskFilter(filterId);
+    if (filterId === "high_risk") {
+      activeLayerId = "action_priority";
+      showLayerOverlay = true;
+      updateLayerRowStates();
+      renderLayerLegend(getActiveLayer());
+      renderLayerSummary(getActiveLayer());
+      currentMap?.queueRender();
+    }
+    if (filterId === "data_gap") {
+      activeLayerId = "data_reliability";
+      showLayerOverlay = true;
+      updateLayerRowStates();
+      renderLayerLegend(getActiveLayer());
+      renderLayerSummary(getActiveLayer());
+      currentMap?.queueRender();
+    }
+    document.getElementById("actionCenterPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "report:delta") {
+    document.getElementById("reportSurface").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function renderKpiStrip(reportPayload) {
+  const strip = document.getElementById("kpiStrip");
+  const kpis = getKpiEntries();
+  if (!reportPayload || !kpis.length) {
+    strip.hidden = true;
+    strip.innerHTML = "";
+    return;
+  }
+  strip.hidden = false;
+  strip.innerHTML = kpis.map((item) => `
+    <button class="kpi-card tone-${escapeHtml(item.tone || "neutral")}" data-action="${escapeHtml(item.action || "")}" type="button">
+      <span class="kpi-label">${escapeHtml(item.label)}</span>
+      <strong class="kpi-value">${escapeHtml(item.value)}</strong>
+      <span class="kpi-detail">${escapeHtml(item.detail || "")}</span>
+    </button>
+  `).join("");
+  for (const button of strip.querySelectorAll(".kpi-card")) {
+    button.addEventListener("click", () => handleKpiAction(button.dataset.action || ""));
+  }
+}
+
+function buildSparklineSVG(metric) {
+  const width = 220;
+  const height = 82;
+  const padX = 10;
+  const padY = 12;
+  const values = (metric?.points || []).map((point) => point.value);
+  if (!values.length) {
+    return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true"></svg>`;
+  }
+  const stepX = values.length > 1 ? (width - padX * 2) / (values.length - 1) : 0;
+  const points = values.map((value, index) => {
+    const x = padX + stepX * index;
+    const y = height - padY - (value / 100) * (height - padY * 2);
+    return { x, y, value };
+  });
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+  const area = `${path} L ${(width - padX).toFixed(2)} ${(height - padY).toFixed(2)} L ${padX.toFixed(2)} ${(height - padY).toFixed(2)} Z`;
+  const tone = metricImprovementDelta(metric) > 2 ? "improving" : metricImprovementDelta(metric) < -2 ? "worsening" : "steady";
+  const last = points[points.length - 1];
+  return `
+    <svg class="sparkline-svg tone-${tone}" viewBox="0 0 ${width} ${height}" aria-hidden="true">
+      <path class="sparkline-area" d="${area}"></path>
+      <path class="sparkline-line" d="${path}"></path>
+      <circle class="sparkline-dot" cx="${last.x.toFixed(2)}" cy="${last.y.toFixed(2)}" r="4"></circle>
+    </svg>
+  `;
+}
+
+function renderTrendPanel(trends) {
+  const panel = document.getElementById("trendPanel");
+  const grid = document.getElementById("trendGrid");
+  const context = document.getElementById("trendContext");
+  const historyPill = document.getElementById("trendHistoryPill");
+  if (!trends?.history?.length) {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+
+  const resolved = resolveTrendFocus(trends);
+  if (!resolved) {
+    panel.hidden = true;
+    grid.innerHTML = "";
+    return;
+  }
+  const { segment, railName, focusEntry } = resolved;
+
+  panel.hidden = false;
+  historyPill.textContent = `최근 ${trends.history.length}회`;
+  context.textContent = segment
+    ? `${segment.rail_name} ${segment.start_m.toFixed(1)}-${segment.end_m.toFixed(1)}m 구간의 추이`
+    : `${railName} rail의 최근 운영 추이`;
+  grid.innerHTML = buildTrendCardsHTML(focusEntry);
+}
+
+function renderActionCenter(tasksPayload) {
+  const panel = document.getElementById("actionCenterPanel");
+  const list = document.getElementById("taskList");
+  const filterRow = document.getElementById("taskFilterRow");
+  const summaryPill = document.getElementById("taskSummaryPill");
+  const meta = document.getElementById("actionCenterMeta");
+  const empty = document.getElementById("taskEmpty");
+
+  if (!tasksPayload?.items?.length) {
+    panel.hidden = true;
+    list.innerHTML = "";
+    filterRow.innerHTML = "";
+    return;
+  }
+
+  panel.hidden = false;
+  const summary = getTaskStatusSummary();
+  summaryPill.textContent = `${summary.unresolved} 미해결`;
+  meta.innerHTML = `
+    <div class="action-center-summary">
+      <strong>${summary.todo}</strong><span>대기</span>
+    </div>
+    <div class="action-center-summary">
+      <strong>${summary.in_progress}</strong><span>진행 중</span>
+    </div>
+    <div class="action-center-summary">
+      <strong>${summary.done}</strong><span>완료</span>
+    </div>
+  `;
+
+  filterRow.innerHTML = (tasksPayload.filters || []).map((filter) => `
+    <button class="task-filter-chip ${filter.id === activeTaskFilter ? "is-active" : ""}" data-filter="${escapeHtml(filter.id)}" type="button">
+      ${escapeHtml(filter.label)}
+    </button>
+  `).join("");
+  for (const button of filterRow.querySelectorAll(".task-filter-chip")) {
+    button.addEventListener("click", () => setActiveTaskFilter(button.dataset.filter));
+  }
+
+  const filtered = getTasksByFilter(activeTaskFilter);
+  empty.hidden = filtered.length > 0;
+  list.innerHTML = filtered.map((task) => `
+    <article class="task-card priority-${escapeHtml(task.priority)} ${task.id === selectedTaskId ? "is-selected" : ""}" data-task-id="${escapeHtml(task.id)}">
+      <div class="task-card-head">
+        <div class="task-pill-group">
+          <span class="task-priority">${escapeHtml(priorityLabel(task.priority))}</span>
+          <span class="task-status status-${escapeHtml(task.effective_status)}">${escapeHtml(statusLabel(task.effective_status))}</span>
+        </div>
+        <button class="task-toggle" data-task-toggle="${escapeHtml(task.id)}" type="button">상태 변경</button>
+      </div>
+      <strong class="task-title">${escapeHtml(task.title)}</strong>
+      <div class="task-meta-line">
+        <span>${escapeHtml(task.rail_name)}</span>
+        <span>${escapeHtml(task.start_m.toFixed(1))}-${escapeHtml(task.end_m.toFixed(1))}m</span>
+        <span>${escapeHtml(task.due_label)}</span>
+      </div>
+      <p class="task-reason">${escapeHtml(task.reason)}</p>
+      <div class="task-action-box">${escapeHtml(task.recommended_action)}</div>
+      <div class="task-footer">
+        <span class="task-source">source: ${escapeHtml(task.source || "demo")}</span>
+      </div>
+    </article>
+  `).join("");
+
+  for (const toggle of list.querySelectorAll(".task-toggle")) {
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleTaskStatus(toggle.dataset.taskToggle);
+    });
+  }
+  for (const card of list.querySelectorAll(".task-card")) {
+    card.addEventListener("click", () => {
+      const task = currentTasksData.items.find((entry) => entry.id === card.dataset.taskId);
+      if (task) applyTaskFocus(task);
+    });
+  }
+}
+
+function buildReportSurfaceHTML(payload) {
+  if (!payload?.report) return "";
+  const report = payload.report;
+  const taskSummary = getTaskStatusSummary();
+  const completionRate = taskSummary.total ? Math.round((taskSummary.done / taskSummary.total) * 100) : 0;
+  const demoNotice = report.demo_notice || payload.session?.demo_notice || "DEMO";
+  const riskRows = (report.risk_sections || []).map((item) => `
+    <article class="report-risk-card severity-${escapeHtml(item.severity)} ${selectedSegmentId === item.segment_id ? "is-active" : ""}" data-segment-focus="${escapeHtml(item.segment_id)}">
+      <div class="report-risk-head">
+        <strong>${escapeHtml(item.rail_name)}</strong>
+        <span>${escapeHtml(item.range_label)}</span>
+      </div>
+      <h3>${escapeHtml(item.headline)}</h3>
+      <p>${escapeHtml(item.reason)}</p>
+      <div class="report-risk-action">${escapeHtml(item.recommended_action)}</div>
+    </article>
+  `).join("");
+
+  const weeklyCards = (report.weekly_summary?.cards || []).map((card) => `
+    <div class="report-week-card tone-${escapeHtml(card.tone || "neutral")}">
+      <span>${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(card.value)}</strong>
+    </div>
+  `).join("");
+
+  const railRows = (report.rail_status || []).map((row) => `
+    <tr class="${selectedRailName === row.rail_name ? "is-active" : ""}" data-rail-focus="${escapeHtml(row.rail_name)}">
+      <td>${escapeHtml(row.rail_name)}</td>
+      <td class="${scoreColor(row.health_score)}">${escapeHtml(row.health_score)}</td>
+      <td class="${scoreColor(100 - row.disease_pest_risk)}">${escapeHtml(row.disease_pest_risk)}</td>
+      <td class="${scoreColor(row.growth_status)}">${escapeHtml(row.growth_status)}</td>
+      <td class="${scoreColor(row.data_reliability)}">${escapeHtml(row.data_reliability)}</td>
+      <td>${escapeHtml(row.unresolved_tasks)}</td>
+      <td>${escapeHtml(row.trend_summary)}</td>
+      <td>${escapeHtml(row.recommendation)}</td>
+    </tr>
+  `).join("");
+
+  const actionRows = (report.recommended_actions || []).map((item) => `
+    <li class="report-action-item">
+      <strong>${escapeHtml(item.headline)}</strong>
+      <span>${escapeHtml(item.detail)}</span>
+    </li>
+  `).join("");
+
+  const deltaSummary = report.delta?.summary || "직전 세션 대비 데이터 없음";
+  return `
+    <div class="report-hero">
+      <div>
+        <p class="report-demo-note">${escapeHtml(demoNotice)}</p>
+        <h3>${escapeHtml(report.headline || "운영 리포트")}</h3>
+        <p class="report-hero-copy">${escapeHtml(report.session_overview?.summary || "")}</p>
+      </div>
+      <div class="report-task-overview">
+        <div><strong>${taskSummary.unresolved}</strong><span>미해결</span></div>
+        <div><strong>${taskSummary.in_progress}</strong><span>진행 중</span></div>
+        <div><strong>${taskSummary.done}</strong><span>완료</span></div>
+      </div>
+    </div>
+    <div class="report-week-grid">${weeklyCards}</div>
+    <div class="report-block-grid">
+      <section class="report-block">
+        <div class="report-block-head">
+          <h3>주요 위험 구간</h3>
+          <span>${escapeHtml(deltaSummary)}</span>
+        </div>
+        <div class="report-risk-grid">${riskRows}</div>
+      </section>
+      <section class="report-block">
+        <div class="report-block-head">
+          <h3>작업 완료 / 미완료 현황</h3>
+          <span>완료율 ${escapeHtml(completionRate)}%</span>
+        </div>
+        <div class="report-task-status-grid">
+          <div><strong>${taskSummary.todo}</strong><span>대기</span></div>
+          <div><strong>${taskSummary.in_progress}</strong><span>진행 중</span></div>
+          <div><strong>${taskSummary.done}</strong><span>완료</span></div>
+        </div>
+        <ul class="report-action-list">${actionRows}</ul>
+      </section>
+    </div>
+    <section class="report-block">
+      <div class="report-block-head">
+        <h3>레일별 상태표</h3>
+        <span>클릭하면 rail에 포커스</span>
+      </div>
+      <div class="report-surface-table-wrap">
+        <table class="report-surface-table">
+          <thead>
+            <tr>
+              <th>Rail</th>
+              <th>Health</th>
+              <th>병충해 위험</th>
+              <th>생육 안정성</th>
+              <th>데이터 신뢰도</th>
+              <th>미해결</th>
+              <th>변화</th>
+              <th>권장 액션</th>
+            </tr>
+          </thead>
+          <tbody>${railRows}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderReportSurface(payload) {
+  const panel = document.getElementById("reportSurface");
+  const body = document.getElementById("reportSurfaceBody");
+  if (!payload?.report) {
+    panel.hidden = true;
+    body.innerHTML = "";
+    return;
+  }
+  panel.hidden = false;
+  body.innerHTML = buildReportSurfaceHTML(payload);
+
+  for (const card of body.querySelectorAll("[data-segment-focus]")) {
+    card.addEventListener("click", () => {
+      const segment = findSegmentById(card.dataset.segmentFocus);
+      if (segment) applySegmentFocus(segment, { focusMap: true, showSelection: true, revealTrend: true });
+    });
+  }
+  for (const row of body.querySelectorAll("[data-rail-focus]")) {
+    row.addEventListener("click", () => {
+      const frame = getFocusFrameForRail(row.dataset.railFocus);
+      if (frame) {
+        applyFrameFocus(frame, { focusMap: true, revealTrend: true });
+        renderSelection(frame, currentInsightsData);
+      }
+    });
+  }
+}
+
 // ─── Session loading ──────────────────────────────────────────────────────────
 
 let currentMap = null;
 let currentSessionLoadToken = 0;
 let currentInsightsData = null;
 let currentLayersData = null;
+let currentManifestData = null;
+let currentFramesData = [];
+let currentTasksData = null;
+let currentTrendsData = null;
+let currentReportData = null;
+let currentDeviceName = null;
+let currentSessionName = null;
+let taskStatusOverrides = {};
 
 async function loadSession(deviceName, sessionName, loadToken = currentSessionLoadToken) {
   const manifest = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/manifest`);
@@ -1655,32 +2383,41 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   if (loadToken !== currentSessionLoadToken) return null;
   const frames = framePayload.items;
 
-  // Load insights (non-blocking: failure → null)
-  let insights = null;
-  try {
-    insights = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/insights`);
-  } catch (_) {
-    insights = null;
-  }
+  const [insightsResult, layersResult, tasksResult, trendsResult, reportResult] = await Promise.allSettled([
+    fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/insights`),
+    fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/layers`),
+    fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/tasks`),
+    fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/trends`),
+    fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/report`),
+  ]);
   if (loadToken !== currentSessionLoadToken) return null;
+
+  const insights = insightsResult.status === "fulfilled" ? insightsResult.value : null;
+  const layers = layersResult.status === "fulfilled" ? layersResult.value : null;
+  const tasks = tasksResult.status === "fulfilled" ? tasksResult.value : null;
+  const trends = trendsResult.status === "fulfilled" ? trendsResult.value : null;
+  const report = reportResult.status === "fulfilled" ? reportResult.value : null;
+
+  currentDeviceName = deviceName;
+  currentSessionName = sessionName;
+  currentManifestData = manifest;
+  currentFramesData = frames;
   currentInsights = insights;
   currentInsightsData = insights;
-
-  // Load layers (non-blocking)
-  let layers = null;
-  try {
-    layers = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/layers`);
-  } catch (_) {
-    layers = null;
-  }
-  if (loadToken !== currentSessionLoadToken) return null;
   currentLayers = layers;
   currentLayersData = layers;
+  currentTasksData = tasks;
+  currentTrendsData = trends;
+  currentReportData = report;
+  taskStatusOverrides = loadTaskOverrides();
   // Reset layer state for new session
   activeLayerId = null;
   showLayerOverlay = false;
   selectedSegmentId = null;
   hoveredSegmentId = null;
+  selectedTaskId = null;
+  activeTaskFilter = "all";
+  selectedRailName = frames[0]?.rail_name || trends?.default_selection?.rail_name || null;
 
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
@@ -1698,6 +2435,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   document.getElementById("selectionInsights").hidden = true;
   document.getElementById("contactSheet").hidden = true;
   document.getElementById("cameraGrid").innerHTML = "";
+  document.getElementById("reportSurfaceBody").innerHTML = "";
 
   const zoomValue = document.getElementById("zoomValue");
   const scaleValue = document.getElementById("scaleValue");
@@ -1723,6 +2461,10 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   renderRailList(manifest, frames, map, insights);
   renderLayersPanel(layers);
   renderLayerQuickSummary(layers);
+  renderActionCenter(tasks);
+  renderKpiStrip(report);
+  renderTrendPanel(trends);
+  renderReportSurface(report);
   // Hide segment detail panel on new session
   document.getElementById("segmentDetail").hidden = true;
   document.getElementById("segmentTooltip").hidden = true;
@@ -1731,6 +2473,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     map.selectedFrameId = frames[0].id;
     map.queueRender();
     renderSelection(frames[0], insights);
+    applyFrameFocus(frames[0], { focusMap: false });
   }
 
   return map;
@@ -1857,10 +2600,19 @@ async function bootstrap() {
   });
 
   document.getElementById("reportButton").addEventListener("click", () => {
-    openReport(currentInsightsData);
+    openReport(currentReportData);
   });
+  document.getElementById("trendJumpButton").addEventListener("click", () => {
+    openTrendModal();
+  });
+  document.getElementById("reportSurfaceView").addEventListener("click", () => {
+    openReport(currentReportData);
+  });
+  document.getElementById("reportSurfacePrint").addEventListener("click", () => window.print());
   document.getElementById("reportClose").addEventListener("click", closeReport);
   document.getElementById("reportBackdrop").addEventListener("click", closeReport);
+  document.getElementById("trendClose").addEventListener("click", closeTrendModal);
+  document.getElementById("trendBackdrop").addEventListener("click", closeTrendModal);
   document.getElementById("printButton").addEventListener("click", () => window.print());
 }
 

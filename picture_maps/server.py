@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import BuildConfig
+from .dashboard import generate_demo_dashboard_runtime
 from .layers import generate_demo_layers_runtime
 
 
@@ -23,6 +24,8 @@ SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$"
 SESSION_INSIGHTS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/insights$")
 SESSION_REPORT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/report$")
 SESSION_LAYERS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/layers$")
+SESSION_TASKS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/tasks$")
+SESSION_TRENDS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/trends$")
 
 
 class SessionData:
@@ -41,6 +44,12 @@ class SessionData:
         if config.layers_path.exists():
             try:
                 self.layers = json.loads(config.layers_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        self.dashboard: dict[str, Any] | None = None
+        if config.dashboard_path.exists():
+            try:
+                self.dashboard = json.loads(config.dashboard_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
 
@@ -142,10 +151,17 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             if not data:
                 self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
                 return
-            if data.insights is None:
-                self.serve_json({"available": False, "report": {}}, send_body=send_body)
-            else:
-                self.serve_json({"available": True, "report": data.insights.get("report", {}), "session": data.insights.get("session", {})}, send_body=send_body)
+            dashboard = self.ensure_dashboard(data)
+            self.serve_json(
+                {
+                    "available": True,
+                    "source": dashboard.get("source", "demo"),
+                    "session": dashboard.get("session", {}),
+                    "kpis": dashboard.get("kpis", []),
+                    "report": dashboard.get("report", {}),
+                },
+                send_body=send_body,
+            )
             return
 
         layers_match = SESSION_LAYERS_RE.match(path)
@@ -155,24 +171,45 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             if not data:
                 self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
                 return
-            if data.layers is not None:
-                self.serve_json(data.layers, send_body=send_body)
-            else:
-                # Runtime fallback: generate demo layers from manifest + frames
-                manifest = data.manifest
-                frames = data.frames.get("items", [])
-                rails = manifest.get("rails", [])
-                world = manifest.get("world", {})
-                generated = generate_demo_layers_runtime(
-                    session_key=manifest.get("dataset_key", session),
-                    rails=rails,
-                    frames=frames,
-                    odom_x_min=world.get("odom_x_min", 0.0),
-                    odom_x_max=world.get("odom_x_max", 10.0),
-                    step_m=world.get("sample_step_m", 0.5),
-                )
-                data.layers = generated
-                self.serve_json(generated, send_body=send_body)
+            self.serve_json(self.ensure_layers(data), send_body=send_body)
+            return
+
+        tasks_match = SESSION_TASKS_RE.match(path)
+        if tasks_match:
+            device, session = tasks_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            dashboard = self.ensure_dashboard(data)
+            self.serve_json(
+                {
+                    "available": True,
+                    "source": dashboard.get("source", "demo"),
+                    "session": dashboard.get("session", {}),
+                    **dashboard.get("tasks", {}),
+                },
+                send_body=send_body,
+            )
+            return
+
+        trends_match = SESSION_TRENDS_RE.match(path)
+        if trends_match:
+            device, session = trends_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            dashboard = self.ensure_dashboard(data)
+            self.serve_json(
+                {
+                    "available": True,
+                    "source": dashboard.get("source", "demo"),
+                    "session": dashboard.get("session", {}),
+                    **dashboard.get("trends", {}),
+                },
+                send_body=send_body,
+            )
             return
 
         tile_match = TILE_RE.match(path)
@@ -238,6 +275,43 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
         parsed_path = urlparse(path).path
         normalized = posixpath.normpath(parsed_path).lstrip("/")
         return str(self.web_root / normalized)
+
+    def ensure_layers(self, data: SessionData) -> dict[str, Any]:
+        if data.layers is not None:
+            return data.layers
+        manifest = data.manifest
+        frames = data.frames.get("items", [])
+        world = manifest.get("world", {})
+        generated = generate_demo_layers_runtime(
+            session_key=manifest.get("dataset_key", manifest.get("session_name", "")),
+            rails=manifest.get("rails", []),
+            frames=frames,
+            odom_x_min=world.get("odom_x_min", 0.0),
+            odom_x_max=world.get("odom_x_max", 10.0),
+            step_m=world.get("sample_step_m", 0.5),
+        )
+        data.layers = generated
+        return generated
+
+    def ensure_dashboard(self, data: SessionData) -> dict[str, Any]:
+        if data.dashboard is not None:
+            return data.dashboard
+        payload = generate_demo_dashboard_runtime(
+            build_root=data.config.build_root,
+            manifest=data.manifest,
+            frames_payload=data.frames,
+            insights=data.insights,
+            layers=self.ensure_layers(data),
+        )
+        data.dashboard = payload
+        try:
+            data.config.dashboard_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        return payload
 
     def serve_json(self, payload: dict[str, Any], *, send_body: bool = True) -> None:
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
