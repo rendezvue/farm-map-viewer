@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 
 from .config import BuildConfig
 from .layers import generate_demo_layers_runtime
+from .tasks import generate_tasks
+from .trends import generate_trends
 
 
 TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.(png|jpg)$")
@@ -23,6 +25,8 @@ SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$"
 SESSION_INSIGHTS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/insights$")
 SESSION_REPORT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/report$")
 SESSION_LAYERS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/layers$")
+SESSION_TASKS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/tasks$")
+SESSION_TRENDS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/trends$")
 
 
 class SessionData:
@@ -43,6 +47,8 @@ class SessionData:
                 self.layers = json.loads(config.layers_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
+        self.tasks: dict[str, Any] | None = None
+        self.trends: dict[str, Any] | None = None
 
 
 class PictureMapsHandler(SimpleHTTPRequestHandler):
@@ -173,6 +179,64 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 )
                 data.layers = generated
                 self.serve_json(generated, send_body=send_body)
+            return
+
+        tasks_match = SESSION_TASKS_RE.match(path)
+        if tasks_match:
+            device, session = tasks_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            if data.tasks is None:
+                # Ensure layers are generated first
+                if data.layers is None:
+                    manifest = data.manifest
+                    frames = data.frames.get("items", [])
+                    rails = manifest.get("rails", [])
+                    world = manifest.get("world", {})
+                    data.layers = generate_demo_layers_runtime(
+                        session_key=manifest.get("dataset_key", session),
+                        rails=rails,
+                        frames=frames,
+                        odom_x_min=world.get("odom_x_min", 0.0),
+                        odom_x_max=world.get("odom_x_max", 10.0),
+                        step_m=world.get("sample_step_m", 0.5),
+                    )
+                data.tasks = generate_tasks(
+                    session_key=data.manifest.get("dataset_key", session),
+                    layers=data.layers,
+                )
+            self.serve_json(data.tasks, send_body=send_body)
+            return
+
+        trends_match = SESSION_TRENDS_RE.match(path)
+        if trends_match:
+            device, session = trends_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            if data.trends is None:
+                if data.layers is None:
+                    manifest = data.manifest
+                    frames = data.frames.get("items", [])
+                    rails = manifest.get("rails", [])
+                    world = manifest.get("world", {})
+                    data.layers = generate_demo_layers_runtime(
+                        session_key=manifest.get("dataset_key", session),
+                        rails=rails,
+                        frames=frames,
+                        odom_x_min=world.get("odom_x_min", 0.0),
+                        odom_x_max=world.get("odom_x_max", 10.0),
+                        step_m=world.get("sample_step_m", 0.5),
+                    )
+                data.trends = generate_trends(
+                    session_key=data.manifest.get("dataset_key", session),
+                    layers=data.layers,
+                    manifest=data.manifest,
+                )
+            self.serve_json(data.trends, send_body=send_body)
             return
 
         tile_match = TILE_RE.match(path)

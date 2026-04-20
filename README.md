@@ -16,12 +16,15 @@
 ```text
 farm-map-viewer/
 ├── picture_maps/
-│   ├── builder.py      # 타일 빌드, 빌드 후 insights 자동 생성
+│   ├── builder.py      # 타일 빌드, 빌드 후 insights/layers 자동 생성
 │   ├── cli.py
-│   ├── config.py       # BuildConfig (insights_path 포함)
+│   ├── config.py       # BuildConfig
 │   ├── dataset.py
 │   ├── insights.py     # 헤리스틱 인사이트 엔진
-│   ├── server.py       # HTTP 서버 + insights/report API
+│   ├── layers.py       # 5종 분석 레이어 (demo deterministic generator)
+│   ├── tasks.py        # Action Center - 오늘 할 일 task generator
+│   ├── trends.py       # Rail별 가상 세션 추이 generator
+│   ├── server.py       # HTTP 서버 + 모든 API 핸들링
 │   └── watcher.py
 ├── web/
 │   ├── app.js
@@ -32,7 +35,8 @@ farm-map-viewer/
         ├── manifest.json
         ├── frames.json
         ├── server_index.json
-        ├── insights.json     ← NEW: 헤리스틱 분석 결과
+        ├── insights.json     ← 헤리스틱 분석 결과 (있으면 사용)
+        ├── layers.json       ← 레이어 데이터 (없으면 런타임 생성)
         ├── cells/*.jpg
         └── tiles/<z>/<x>/<y>.jpg
 ```
@@ -76,6 +80,81 @@ python3 -m picture_maps.cli serve \
 - `insights.json`: 헤리스틱 분석 결과 (session/rail/frame/alerts/report)
 - `cells/*.jpg`: 위치별 2x2 콘택트시트
 - `tiles/<z>/<x>/<y>.jpg`: 슬리피맵 타일
+
+## API 엔드포인트 목록
+
+| Endpoint | 설명 |
+|---|---|
+| `GET /api/devices` | 디바이스/세션 목록 |
+| `GET /api/devices/:d/sessions/:s/manifest` | 세션 메타데이터 |
+| `GET /api/devices/:d/sessions/:s/frames` | 프레임 리스트 |
+| `GET /api/devices/:d/sessions/:s/insights` | 헤리스틱 인사이트 |
+| `GET /api/devices/:d/sessions/:s/layers` | 5종 분석 레이어 |
+| `GET /api/devices/:d/sessions/:s/tasks` | **NEW** 오늘 할 일 작업 목록 |
+| `GET /api/devices/:d/sessions/:s/trends` | **NEW** Rail별 세션 추이 데이터 |
+| `GET /api/devices/:d/sessions/:s/report` | 운영 리포트 요약 |
+
+### tasks.json 구조
+
+```json
+{
+  "source": "demo",
+  "session": "...",
+  "tasks": [
+    {
+      "id": "task_disease_pest_risk_high_...",
+      "title": "병충해 의심 구간 현장 확인",
+      "priority": "high",
+      "task_type": "disease_check",
+      "rail_name": "rail_005",
+      "start_m": 12.0,
+      "end_m": 20.0,
+      "reason": "흰가루병 또는 진딧물 의심 패턴 감지",
+      "recommended_action": "즉시 방제 약제 살포 검토 및 격리 조치",
+      "due_label": "12시간 내",
+      "source": "demo",
+      "status": "todo",
+      "layer_id": "disease_pest_risk",
+      "frame_ids": [...],
+      "value": 87,
+      "confidence": 0.82
+    }
+  ],
+  "summary": {
+    "total": 20, "high_open": 11, "medium_open": 6,
+    "todo": 14, "in_progress": 3, "done": 3
+  }
+}
+```
+
+### trends.json 구조
+
+```json
+{
+  "source": "demo",
+  "session": "...",
+  "session_labels": ["S-5", "S-4", "S-3", "S-2", "S-1", "현재"],
+  "rails": {
+    "rail_001": {
+      "sessions": [...],
+      "trends": {
+        "health_score": [54.7, 50.1, 53.2, 54.0, 51.3, 48.6],
+        "disease_pest_risk": [...],
+        "growth_status": [...],
+        "data_reliability": [...]
+      },
+      "summaries": {
+        "health_score": "최근 3회 연속 악화 주의",
+        "disease_pest_risk": "직전 대비 +8 악화",
+        ...
+      },
+      "current": { "health_score": 48.6, ... }
+    }
+  }
+}
+```
+
+> **실제 데이터 연동 시**: `tasks.py`의 `generate_tasks()`, `trends.py`의 `generate_trends()`를 교체하거나, layers.json 대신 실 분석 결과 JSON을 같은 포맷으로 제공하면 됩니다.
 
 ## insights.json 구조
 

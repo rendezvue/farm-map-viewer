@@ -64,6 +64,18 @@ function deltaText(delta) {
 let currentInsights = null;
 let showRiskOverlay = true;
 
+// ─── Task store ───────────────────────────────────────────────────────────────
+
+let currentTasks = null;       // tasks API payload
+let taskFilter = "active";     // "active" | "all" | "done"
+let taskStatusOverrides = {};  // id → "todo"|"in_progress"|"done" (client-side toggles)
+
+// ─── Trend store ──────────────────────────────────────────────────────────────
+
+let currentTrends = null;      // trends API payload
+let activeTrendRail = null;    // which rail's trends are shown
+let selActiveTab = "info";     // "info" | "trend"
+
 // ─── Layer store ──────────────────────────────────────────────────────────────
 
 let currentLayers = null;          // full layers.json payload
@@ -1096,6 +1108,8 @@ function renderRailList(manifest, frames, map, insights) {
       if (!frame) return;
       map.focusFrame(frame);
       renderSelection(frame, insights);
+      setActiveRail(rail.name);
+      if (currentTrends) showRailTrend(rail.name);
     });
     railList.appendChild(button);
   }
@@ -1210,6 +1224,46 @@ function renderSelection(frame, insights) {
 
 // ─── Report rendering ─────────────────────────────────────────────────────────
 
+function buildTaskReportSection(tasks) {
+  if (!tasks || !tasks.tasks?.length) return "";
+  const t = tasks.tasks;
+  const summary = tasks.summary || {};
+  const highOpen = t.filter((x) => x.priority === "high" && getTaskEffectiveStatus(x) !== "done");
+  const medOpen = t.filter((x) => x.priority === "medium" && getTaskEffectiveStatus(x) !== "done");
+  const done = t.filter((x) => getTaskEffectiveStatus(x) === "done");
+
+  const taskRows = t.map((task) => {
+    const eff = getTaskEffectiveStatus(task);
+    const statusLabel = eff === "done" ? "완료" : eff === "in_progress" ? "진행 중" : "미착수";
+    const priorityLabel = task.priority === "high" ? "긴급" : "주의";
+    return `<tr class="${task.priority === "high" ? "row-priority" : ""}">
+      <td><strong style="color:${task.priority === "high" ? "var(--bad)" : "var(--warn)"}">${priorityLabel}</strong></td>
+      <td>${task.title}</td>
+      <td>${task.rail_name}</td>
+      <td>${task.start_m.toFixed(1)}–${task.end_m.toFixed(1)}m</td>
+      <td>${task.due_label}</td>
+      <td>${statusLabel}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+<div class="report-section">
+  <h3>작업 현황</h3>
+  <div class="report-alert-summary">
+    <div class="report-stat report-stat-error"><strong>${highOpen.length}</strong><span>긴급 미완료</span></div>
+    <div class="report-stat report-stat-warn"><strong>${medOpen.length}</strong><span>주의 미완료</span></div>
+    <div class="report-stat"><strong>${done.length}</strong><span>완료</span></div>
+    <div class="report-stat"><strong>${t.length}</strong><span>전체</span></div>
+  </div>
+  <div class="report-table-wrap" style="margin-top:12px">
+    <table class="report-table">
+      <thead><tr><th>우선순위</th><th>작업</th><th>Rail</th><th>구간</th><th>기한</th><th>상태</th></tr></thead>
+      <tbody>${taskRows}</tbody>
+    </table>
+  </div>
+</div>`;
+}
+
 function buildReportHTML(insights) {
   if (!insights || !insights.available) {
     return "<p>이 세션의 인사이트 데이터가 없습니다.</p>";
@@ -1284,6 +1338,8 @@ function buildReportHTML(insights) {
   <h3>운영 권장 액션</h3>
   <ol>${actionsHTML}</ol>
 </div>
+
+${buildTaskReportSection(currentTasks)}
 
 <div class="report-section">
   <h3>Alert 상세 목록</h3>
@@ -1585,6 +1641,280 @@ const REASON_LABELS = {
   below_avg_height: "평균 이하 생장",
 };
 
+// ─── Sel tab switching ────────────────────────────────────────────────────────
+
+function switchSelTab(tab) {
+  selActiveTab = tab;
+  for (const btn of document.querySelectorAll(".sel-tab")) {
+    btn.classList.toggle("is-active", btn.dataset.tab === tab);
+  }
+  document.getElementById("selInfoContent").hidden = tab !== "info";
+  document.getElementById("selTrendContent").hidden = tab !== "trend";
+}
+
+// ─── Trend chart (SVG) ───────────────────────────────────────────────────────
+
+const TREND_META = {
+  health_score:      { label: "종합 Health", higherIsBad: false, unit: "점" },
+  disease_pest_risk: { label: "병충해 위험",  higherIsBad: true,  unit: "점" },
+  growth_status:     { label: "생육 상태",    higherIsBad: false, unit: "점" },
+  data_reliability:  { label: "데이터 신뢰도", higherIsBad: false, unit: "점" },
+};
+
+function buildTrendSVG(sessions, values, higherIsBad) {
+  const W = 268, H = 78;
+  const pad = { top: 8, right: 10, bottom: 20, left: 28 };
+  const iW = W - pad.left - pad.right;
+  const iH = H - pad.top - pad.bottom;
+  const n = values.length;
+  if (n < 2) return "";
+
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const range = maxV - minV || 10;
+
+  const px = (i) => pad.left + (i / (n - 1)) * iW;
+  const py = (v) => pad.top + iH - ((v - minV) / range) * iH;
+
+  const delta = values[n - 1] - values[n - 2];
+  const worsening = higherIsBad ? delta > 1.5 : delta < -1.5;
+  const improving = higherIsBad ? delta < -1.5 : delta > 1.5;
+  const lineCol = worsening ? "#c02828" : improving ? "#1a7a4a" : "#a06010";
+
+  const pathD = values.map((v, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(" ");
+  const areaD = `${pathD} L${px(n - 1).toFixed(1)} ${(pad.top + iH).toFixed(1)} L${px(0).toFixed(1)} ${(pad.top + iH).toFixed(1)} Z`;
+
+  const dots = values.map((v, i) => {
+    const r = i === n - 1 ? 4 : 2.5;
+    return `<circle cx="${px(i).toFixed(1)}" cy="${py(v).toFixed(1)}" r="${r}" fill="${lineCol}" stroke="white" stroke-width="1.5"/>`;
+  }).join("");
+
+  const firstLabel = sessions[0] || "";
+  const lastLabel = sessions[n - 1] || "현재";
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  <text x="${pad.left - 3}" y="${pad.top + 5}" text-anchor="end" font-size="8.5" fill="rgba(95,110,99,0.65)">${Math.round(maxV)}</text>
+  <text x="${pad.left - 3}" y="${pad.top + iH + 4}" text-anchor="end" font-size="8.5" fill="rgba(95,110,99,0.65)">${Math.round(minV)}</text>
+  <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left + iW}" y2="${pad.top}" stroke="rgba(95,110,99,0.08)" stroke-width="1"/>
+  <line x1="${pad.left}" y1="${pad.top + iH}" x2="${pad.left + iW}" y2="${pad.top + iH}" stroke="rgba(95,110,99,0.12)" stroke-width="1"/>
+  <path d="${areaD}" fill="${lineCol}" opacity="0.07"/>
+  <path d="${pathD}" fill="none" stroke="${lineCol}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  ${dots}
+  <text x="${px(0).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(95,110,99,0.55)">${firstLabel}</text>
+  <text x="${px(n - 1).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(95,110,99,0.55)">${lastLabel}</text>
+</svg>`;
+}
+
+function renderTrendCharts(railName, trendsData) {
+  const railData = trendsData?.rails?.[railName];
+  const header = document.getElementById("trendRailHeader");
+  const container = document.getElementById("trendCharts");
+  if (!railData) {
+    if (header) header.innerHTML = "";
+    if (container) container.innerHTML = "<p style='color:var(--muted);font-size:12px;'>추이 데이터 없음</p>";
+    return;
+  }
+
+  if (header) {
+    const cur = railData.current;
+    const healthClass = cur.health_score >= 75 ? "score-good" : cur.health_score >= 50 ? "score-warn" : "score-bad";
+    header.innerHTML = `
+      <div class="trend-rail-name">${railName}</div>
+      <div class="trend-cur-stats">
+        <span class="trend-cur-stat ${healthClass}">
+          <strong>${Math.round(cur.health_score)}</strong><span>Health</span>
+        </span>
+        <span class="trend-cur-stat ${cur.disease_pest_risk >= 70 ? "score-bad" : cur.disease_pest_risk >= 40 ? "score-warn" : "score-good"}">
+          <strong>${Math.round(cur.disease_pest_risk)}</strong><span>병충해</span>
+        </span>
+        <span class="trend-cur-stat ${cur.growth_status >= 60 ? "score-good" : cur.growth_status >= 35 ? "score-warn" : "score-bad"}">
+          <strong>${Math.round(cur.growth_status)}</strong><span>생육</span>
+        </span>
+        <span class="trend-cur-stat ${cur.data_reliability >= 60 ? "score-good" : cur.data_reliability >= 35 ? "score-warn" : "score-bad"}">
+          <strong>${Math.round(cur.data_reliability)}</strong><span>신뢰도</span>
+        </span>
+      </div>
+      <div class="trend-demo-note"><span class="demo-badge">DEMO</span> 가상 세션 기반 추이 (실데이터 아님)</div>
+    `;
+  }
+
+  if (!container) return;
+  container.innerHTML = "";
+
+  const metrics = ["health_score", "disease_pest_risk", "growth_status", "data_reliability"];
+  for (const metric of metrics) {
+    const meta = TREND_META[metric];
+    const values = railData.trends[metric];
+    const summary = railData.summaries[metric];
+    const sessions = railData.sessions;
+    if (!values || values.length < 2) continue;
+
+    const last = values[values.length - 1];
+    const prev = values[values.length - 2];
+    const delta = last - prev;
+    const worsening = meta.higherIsBad ? delta > 1.5 : delta < -1.5;
+    const improving = meta.higherIsBad ? delta < -1.5 : delta > 1.5;
+    const summaryClass = worsening ? "trend-bad" : improving ? "trend-good" : "trend-stable";
+
+    const card = document.createElement("div");
+    card.className = "trend-chart-card";
+    card.innerHTML = `
+      <div class="trend-chart-label">${meta.label}</div>
+      <div class="trend-chart-svg">${buildTrendSVG(sessions, values, meta.higherIsBad)}</div>
+      ${summary ? `<div class="trend-chart-summary ${summaryClass}">${summary}</div>` : ""}
+    `;
+    container.appendChild(card);
+  }
+}
+
+function showRailTrend(railName) {
+  if (!currentTrends) return;
+  activeTrendRail = railName;
+  const trendTabBtn = document.getElementById("trendTabBtn");
+  if (trendTabBtn) trendTabBtn.disabled = false;
+  renderTrendCharts(railName, currentTrends);
+  switchSelTab("trend");
+}
+
+// ─── Task panel rendering ─────────────────────────────────────────────────────
+
+const TASK_PRIORITY_ICONS = { high: "!", medium: "~", low: "·" };
+const TASK_TYPE_LABELS = {
+  disease_check: "병충해",
+  growth_check: "생육",
+  reshot: "재촬영",
+  camera_check: "카메라",
+  harvest: "수확",
+  priority_check: "우선점검",
+};
+
+function getTaskEffectiveStatus(task) {
+  return taskStatusOverrides[task.id] ?? task.status;
+}
+
+function renderTaskPanel(tasksData, map) {
+  const panel = document.getElementById("tasksPanel");
+  const list = document.getElementById("taskList");
+  const pill = document.getElementById("taskCountPill");
+  if (!tasksData || !tasksData.tasks?.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  const openCount = tasksData.tasks.filter((t) => getTaskEffectiveStatus(t) !== "done").length;
+  pill.textContent = String(openCount);
+
+  _renderTaskList(tasksData.tasks, list, map);
+
+  for (const btn of document.querySelectorAll(".task-filter-btn")) {
+    btn.onclick = () => {
+      taskFilter = btn.dataset.filter;
+      for (const b of document.querySelectorAll(".task-filter-btn")) {
+        b.classList.toggle("is-active", b.dataset.filter === taskFilter);
+      }
+      _renderTaskList(tasksData.tasks, list, map);
+    };
+  }
+}
+
+function _renderTaskList(tasks, listEl, map) {
+  listEl.innerHTML = "";
+  const filtered = tasks.filter((t) => {
+    const eff = getTaskEffectiveStatus(t);
+    if (taskFilter === "active") return eff !== "done";
+    if (taskFilter === "done") return eff === "done";
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    const empty = createElement("div", "task-empty");
+    empty.textContent = taskFilter === "done" ? "완료된 작업이 없습니다." : "대기 중인 작업이 없습니다.";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  for (const task of filtered) {
+    const eff = getTaskEffectiveStatus(task);
+    const item = document.createElement("div");
+    item.className = `task-item task-${task.priority} task-status-${eff}`;
+
+    const header = document.createElement("div");
+    header.className = "task-item-header";
+
+    const icon = createElement("span", `task-priority-icon task-icon-${task.priority}`, TASK_PRIORITY_ICONS[task.priority] || "·");
+    const typeTag = createElement("span", "task-type-tag", TASK_TYPE_LABELS[task.task_type] || task.task_type);
+
+    const titleBtn = document.createElement("button");
+    titleBtn.className = "task-title-btn";
+    titleBtn.type = "button";
+    titleBtn.textContent = task.title;
+    titleBtn.addEventListener("click", () => focusTaskOnMap(task, map));
+
+    const doneToggle = document.createElement("button");
+    doneToggle.className = `task-done-toggle ${eff === "done" ? "is-done" : ""}`;
+    doneToggle.type = "button";
+    doneToggle.title = eff === "done" ? "완료 취소" : "완료 처리";
+    doneToggle.textContent = eff === "done" ? "✓" : "○";
+    doneToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const cur = getTaskEffectiveStatus(task);
+      taskStatusOverrides[task.id] = cur === "done" ? "todo" : "done";
+      renderTaskPanel({ tasks, summary: {} }, map);
+      // Refresh pill count
+      const openCount = tasks.filter((t) => getTaskEffectiveStatus(t) !== "done").length;
+      const pill = document.getElementById("taskCountPill");
+      if (pill) pill.textContent = String(openCount);
+    });
+
+    header.append(icon, typeTag, titleBtn, doneToggle);
+    item.appendChild(header);
+
+    const meta = document.createElement("div");
+    meta.className = "task-item-meta";
+    meta.innerHTML = `<span class="task-rail">${task.rail_name}</span>
+      <span class="task-range">${task.start_m.toFixed(1)}–${task.end_m.toFixed(1)}m</span>
+      <span class="task-due task-due-${task.priority}">${task.due_label}</span>`;
+    item.appendChild(meta);
+
+    const reason = createElement("div", "task-item-reason", task.reason);
+    item.appendChild(reason);
+
+    if (eff !== "done") {
+      const action = document.createElement("div");
+      action.className = "task-item-action";
+      action.innerHTML = `<span class="task-action-arrow">→</span> ${task.recommended_action}`;
+      item.appendChild(action);
+    }
+
+    listEl.appendChild(item);
+  }
+}
+
+function focusTaskOnMap(task, map) {
+  if (!map) return;
+  // Focus map on the task's rail + frame range
+  const frame = map.frames.find((f) =>
+    f.rail_name === task.rail_name &&
+    f.odom_x >= task.start_m &&
+    f.odom_x <= task.end_m
+  ) || map.frames.find((f) => f.rail_name === task.rail_name);
+  if (frame) {
+    map.focusFrame(frame);
+    renderSelection(frame, currentInsightsData);
+  }
+  // Activate relevant layer on map
+  if (task.layer_id && currentLayersData) {
+    activeLayerId = task.layer_id;
+    showLayerOverlay = true;
+    updateLayerRowStates();
+    const layer = getActiveLayer();
+    renderLayerLegend(layer);
+    renderLayerSummary(layer);
+    map.queueRender();
+  }
+}
+
 // ─── Quick summary (ops panel integration) ───────────────────────────────────
 
 function renderLayerQuickSummary(layers) {
@@ -1630,6 +1960,13 @@ function renderLayerQuickSummary(layers) {
     { id: "statDataGap", value: dataGapCount, label: "데이터이상", cls: dataGapCount > 0 ? "stat-warn" : "stat-good" },
   ];
 
+  const layerClickMap = {
+    statHighAction: "action_priority",
+    statPriorityRailsL: null,
+    statHighDisease: "disease_pest_risk",
+    statDataGap: "data_reliability",
+  };
+
   for (const s of stats) {
     const stat = document.createElement("div");
     stat.className = `ops-stat ${s.cls}`;
@@ -1637,6 +1974,26 @@ function renderLayerQuickSummary(layers) {
     const val = createElement("span", "ops-stat-value", String(s.value));
     const lbl = createElement("span", "ops-stat-label", s.label);
     stat.append(val, lbl);
+
+    const targetLayerId = layerClickMap[s.id];
+    if (targetLayerId !== undefined && s.value > 0) {
+      stat.style.cursor = "pointer";
+      stat.title = "클릭: 레이어 보기";
+      stat.addEventListener("click", () => {
+        if (targetLayerId && currentLayersData) {
+          activeLayerId = targetLayerId;
+          showLayerOverlay = true;
+          updateLayerRowStates();
+          const layer = getActiveLayer();
+          renderLayerLegend(layer);
+          renderLayerSummary(layer);
+          currentMap?.queueRender();
+          // Show layers panel
+          document.getElementById("layersPanel").hidden = false;
+        }
+      });
+    }
+
     grid.appendChild(stat);
   }
 }
@@ -1682,6 +2039,24 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   selectedSegmentId = null;
   hoveredSegmentId = null;
 
+  // Load tasks
+  let tasks = null;
+  try {
+    tasks = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/tasks`);
+  } catch (_) { tasks = null; }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentTasks = tasks;
+  taskStatusOverrides = {};
+
+  // Load trends
+  let trends = null;
+  try {
+    trends = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/trends`);
+  } catch (_) { trends = null; }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentTrends = trends;
+  activeTrendRail = null;
+
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
 
@@ -1723,6 +2098,12 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   renderRailList(manifest, frames, map, insights);
   renderLayersPanel(layers);
   renderLayerQuickSummary(layers);
+  renderTaskPanel(tasks, map);
+  // Reset selection tabs
+  selActiveTab = "info";
+  switchSelTab("info");
+  const trendTabBtn = document.getElementById("trendTabBtn");
+  if (trendTabBtn) trendTabBtn.disabled = true;
   // Hide segment detail panel on new session
   document.getElementById("segmentDetail").hidden = true;
   document.getElementById("segmentTooltip").hidden = true;
@@ -1862,6 +2243,14 @@ async function bootstrap() {
   document.getElementById("reportClose").addEventListener("click", closeReport);
   document.getElementById("reportBackdrop").addEventListener("click", closeReport);
   document.getElementById("printButton").addEventListener("click", () => window.print());
+
+  // Selection tabs
+  for (const btn of document.querySelectorAll(".sel-tab")) {
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      switchSelTab(btn.dataset.tab);
+    });
+  }
 }
 
 bootstrap().catch((error) => {
