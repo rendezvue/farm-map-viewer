@@ -96,6 +96,11 @@ const CROP_PANEL_SERIES = [
     label: "익음",
     color: "#d96844",
   },
+  {
+    id: "pest",
+    label: "병충해",
+    color: "#8f5f3f",
+  },
 ];
 
 function toCropCount(value) {
@@ -132,6 +137,7 @@ function buildCropPanelPlaceholder(sessionName = "-") {
       unripe: 0,
       midripe: 0,
       ripe: 0,
+      pest: 0,
       total: 0,
     },
     trend_30d: {
@@ -141,6 +147,7 @@ function buildCropPanelPlaceholder(sessionName = "-") {
         unripe: 0,
         midripe: 0,
         ripe: 0,
+        pest: 0,
         total: 0,
       },
     },
@@ -156,6 +163,7 @@ function getCropPanelState(summary = currentCropSummary) {
       unripe: 0,
       midripe: 0,
       ripe: 0,
+      pest: 0,
       total: 0,
     },
     points: [],
@@ -164,6 +172,7 @@ function getCropPanelState(summary = currentCropSummary) {
       unripe: 0,
       midripe: 0,
       ripe: 0,
+      pest: 0,
       total: 0,
     },
   };
@@ -178,6 +187,7 @@ function getCropPanelState(summary = currentCropSummary) {
     unripe: toCropCount(counts.unripe),
     midripe: toCropCount(counts.midripe),
     ripe: toCropCount(counts.ripe),
+    pest: toCropCount(counts.pest),
   };
   normalizedCounts.total =
     toCropCount(counts.total) ||
@@ -193,6 +203,7 @@ function getCropPanelState(summary = currentCropSummary) {
       unripe: toCropPercent(deltaPct.unripe),
       midripe: toCropPercent(deltaPct.midripe),
       ripe: toCropPercent(deltaPct.ripe),
+      pest: toCropPercent(deltaPct.pest),
       total: toCropPercent(deltaPct.total),
     },
   };
@@ -209,12 +220,12 @@ function buildCropSeriesData(cropState) {
 
 function buildCropTrendSvg(seriesData, xLabels) {
   const width = 320;
-  const height = 204;
   const padding = { top: 16, right: 70, bottom: 24, left: 56 };
+  const bandGap = 10;
+  const bandHeight = 34;
+  const height = padding.top + padding.bottom + bandHeight * seriesData.length + bandGap * Math.max(0, seriesData.length - 1);
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
-  const bandGap = 10;
-  const bandHeight = (chartHeight - bandGap * (seriesData.length - 1)) / seriesData.length;
   const pointCount = seriesData[0]?.points.length || 0;
   const maxIndex = Math.max(1, pointCount - 1);
   const guideIndices = [...new Set([
@@ -288,7 +299,7 @@ function buildCropTrendSvg(seriesData, xLabels) {
   `).join("");
 
   return `
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="최근 30일간 작물 생육 단계별 검출 추이">
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="최근 30일간 작물 생육 단계 및 병충해 검출 추이">
       <defs>${defs}</defs>
       <rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="18" fill="rgba(255,255,255,0.42)" stroke="rgba(24,49,38,0.08)"/>
       ${guides}
