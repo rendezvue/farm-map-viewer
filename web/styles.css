@@ -52,15 +52,48 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 368px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr) 300px;
+  grid-template-rows: 100%;
   height: 100%;
   gap: 18px;
   padding: 18px;
 }
 
 .sidebar,
-.map-stage {
+.map-stage,
+.right-panel {
   min-height: 0;
+}
+
+/* ─── Right panel ────────────────────────────────────────────────────────── */
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+/* 레이어 패널은 고정 높이 */
+.right-panel .panel-layers {
+  flex-shrink: 0;
+}
+
+/* 오늘 할 일 패널은 남은 공간 채움 */
+.right-panel .panel-tasks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.right-panel .task-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar {
@@ -176,37 +209,68 @@ button {
 }
 
 .session-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  max-height: 180px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .session-chip {
-  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
   border: 1px solid rgba(24, 49, 38, 0.11);
   background: var(--panel-strong);
   color: var(--text);
-  border-radius: 14px;
+  border-radius: 12px;
   text-align: left;
-}
-
-.session-chip strong,
-.session-chip span {
-  display: block;
+  width: 100%;
 }
 
 .session-chip strong {
+  display: block;
   font-size: 12px;
   letter-spacing: 0.02em;
 }
 
 .session-chip span {
-  margin-top: 3px;
+  flex-shrink: 0;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* ─── Device combobox ────────────────────────────────────────────────────── */
+
+.device-select {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(24, 49, 38, 0.18);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: auto;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.device-select:focus {
+  border-color: var(--accent);
+}
+
+.device-select:hover {
+  border-color: rgba(31, 106, 77, 0.35);
 }
 
 .session-chip.is-active {
@@ -226,6 +290,7 @@ button {
   max-height: 260px;
   overflow: auto;
   padding-right: 6px;
+  overscroll-behavior: contain;
 }
 
 .rail-chip {
@@ -646,6 +711,7 @@ button {
   max-height: 200px;
   overflow: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .alert-item {
@@ -1813,18 +1879,57 @@ body.modal-open { overflow: hidden; }
   .report-table tr { page-break-inside: avoid; }
 }
 
+@media (max-width: 1400px) {
+  /* 우측 패널을 맵 아래로 내림 */
+  .app-shell {
+    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    height: auto;
+    min-height: 100%;
+  }
+
+  .right-panel {
+    grid-column: 2;
+    flex-direction: row;
+    align-items: flex-start;
+    overflow: visible;
+  }
+
+  .right-panel .panel-layers,
+  .right-panel .panel-tasks {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .right-panel .panel-tasks {
+    max-height: 400px;
+  }
+
+  .right-panel .task-list {
+    max-height: 260px;
+  }
+}
+
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 100%;
   }
 
   .sidebar {
-    order: 2;
+    order: 3;
   }
 
   .map-stage {
     order: 1;
+  }
+
+  .right-panel {
+    order: 2;
+    grid-column: 1;
+    flex-direction: row;
   }
 
   .rail-list,

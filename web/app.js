@@ -2122,22 +2122,31 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 function renderDeviceTabs(devicesData, onSelect) {
   const tabsEl = document.getElementById("deviceTabs");
   tabsEl.innerHTML = "";
+
+  const select = document.createElement("select");
+  select.className = "device-select";
   for (const device of devicesData) {
-    const btn = createElement("button", "device-tab", device.name);
-    btn.dataset.device = device.name;
-    btn.addEventListener("click", () => onSelect(device.name));
-    tabsEl.appendChild(btn);
+    const opt = document.createElement("option");
+    opt.value = device.name;
+    opt.textContent = device.name;
+    select.appendChild(opt);
   }
+  select.addEventListener("change", () => onSelect(select.value));
+  tabsEl.appendChild(select);
 }
 
 function renderSessionList(sessions, activeDevice, onSelect) {
   const listEl = document.getElementById("sessionList");
   listEl.innerHTML = "";
-  for (const session of sessions) {
+
+  // 최신 세션이 상단에 오도록 내림차순 정렬
+  const sorted = [...sessions].sort((a, b) => b.name.localeCompare(a.name));
+
+  for (const session of sorted) {
     const btn = createElement("button", "session-chip");
     btn.dataset.session = session.name;
     const name = createElement("strong", "", session.name);
-    const meta = createElement("span", "", `rail ${session.rail_count} · ${session.frame_count.toLocaleString()} frames`);
+    const meta = createElement("span", "", `rail ${session.rail_count} · ${session.frame_count.toLocaleString()}`);
     btn.append(name, meta);
     btn.addEventListener("click", () => onSelect(activeDevice, session.name, btn));
     listEl.appendChild(btn);
@@ -2168,9 +2177,9 @@ async function bootstrap() {
 
   function selectDevice(deviceName) {
     activeDevice = deviceName;
-    for (const tab of document.querySelectorAll(".device-tab")) {
-      tab.classList.toggle("is-active", tab.dataset.device === deviceName);
-    }
+    // 콤보박스 값 동기화
+    const sel = document.querySelector(".device-select");
+    if (sel && sel.value !== deviceName) sel.value = deviceName;
     const device = devicesData.find((d) => d.name === deviceName);
     renderSessionList(device.sessions, deviceName, selectSession);
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
@@ -2219,23 +2228,26 @@ async function bootstrap() {
   // Default: overlay on
   document.getElementById("toggleOverlayButton").classList.add("is-active");
 
-  document.getElementById("toggleLayersButton").addEventListener("click", () => {
-    if (!currentLayersData) return;
-    if (!showLayerOverlay) {
-      // Turn on first available layer
-      if (!activeLayerId && currentLayersData.layers?.length) {
-        activeLayerId = currentLayersData.layers[0].id;
+  // toggleLayersButton은 HTML에서 제거됨 (우측 패널로 이동) — 없으면 skip
+  const toggleLayersBtn = document.getElementById("toggleLayersButton");
+  if (toggleLayersBtn) {
+    toggleLayersBtn.addEventListener("click", () => {
+      if (!currentLayersData) return;
+      if (!showLayerOverlay) {
+        if (!activeLayerId && currentLayersData.layers?.length) {
+          activeLayerId = currentLayersData.layers[0].id;
+        }
+        showLayerOverlay = true;
+      } else {
+        showLayerOverlay = false;
       }
-      showLayerOverlay = true;
-    } else {
-      showLayerOverlay = false;
-    }
-    updateLayerRowStates();
-    const layer = getActiveLayer();
-    renderLayerLegend(layer);
-    renderLayerSummary(layer);
-    currentMap?.queueRender();
-  });
+      updateLayerRowStates();
+      const layer = getActiveLayer();
+      renderLayerLegend(layer);
+      renderLayerSummary(layer);
+      currentMap?.queueRender();
+    });
+  }
 
   document.getElementById("reportButton").addEventListener("click", () => {
     openReport(currentInsightsData);
