@@ -788,16 +788,27 @@ class TileMap {
       }
 
       ctx.strokeStyle = "rgba(20, 63, 49, 0.18)";
-      ctx.fillStyle = "rgba(20, 63, 49, 0.8)";
       ctx.lineWidth = 1;
-      ctx.font = '12px "IBM Plex Sans KR", sans-serif';
       ctx.beginPath();
       ctx.moveTo(screen.x, 0);
       ctx.lineTo(screen.x, height);
       ctx.stroke();
-      if (scale > 0.1) {
-        ctx.fillText(rail.name.replace("rail_", "R"), screen.x - 12, 18);
-      }
+      // Rail name pill — always visible regardless of zoom
+      const railLabel = rail.name.replace("rail_", "R");
+      ctx.font = 'bold 11px "Space Grotesk", "IBM Plex Sans KR", sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const rlW = ctx.measureText(railLabel).width + 12;
+      const rlH = 17;
+      const rlX = clamp(screen.x, rlW / 2 + 4, width - rlW / 2 - 4);
+      ctx.fillStyle = "rgba(8, 30, 22, 0.78)";
+      ctx.beginPath();
+      ctx.roundRect(rlX - rlW / 2, 5, rlW, rlH, 4);
+      ctx.fill();
+      ctx.fillStyle = "#c8ead8";
+      ctx.fillText(railLabel, rlX, 5 + rlH / 2);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
     }
 
     // ── Frame-level alert dots ────────────────────────────────────────────────
@@ -829,9 +840,11 @@ class TileMap {
     const tickStep = chooseTickStep(screenPxPerMeter);
     const firstMeter = Math.floor(this.manifest.world.odom_x_min / tickStep) * tickStep;
     const lastMeter = this.manifest.world.odom_x_max + tickStep;
-    ctx.strokeStyle = "rgba(185, 105, 53, 0.18)";
-    ctx.fillStyle = "rgba(185, 105, 53, 0.9)";
-    ctx.font = '12px "IBM Plex Sans KR", sans-serif';
+    ctx.strokeStyle = "rgba(185, 105, 53, 0.15)";
+    ctx.lineWidth = 1;
+    ctx.font = 'bold 11px "IBM Plex Sans KR", sans-serif';
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
     for (let meter = firstMeter; meter <= lastMeter; meter += tickStep) {
       const worldY = this.manifest.layout.margin_y + (meter - this.manifest.world.odom_x_min) * this.manifest.layout.px_per_meter_y;
       const screen = this.worldToScreen(this.centerX, worldY);
@@ -840,8 +853,18 @@ class TileMap {
       ctx.moveTo(0, screen.y);
       ctx.lineTo(width, screen.y);
       ctx.stroke();
-      ctx.fillText(`${meter.toFixed(1)}m`, 10, screen.y - 6);
+      const mLabel = `${meter.toFixed(1)}m`;
+      const mW = ctx.measureText(mLabel).width + 10;
+      const mH = 16;
+      const mY = screen.y - mH / 2;
+      ctx.fillStyle = "rgba(8, 30, 22, 0.70)";
+      ctx.beginPath();
+      ctx.roundRect(6, mY, mW, mH, 3);
+      ctx.fill();
+      ctx.fillStyle = "#f5c97a";
+      ctx.fillText(mLabel, 11, screen.y);
     }
+    ctx.textBaseline = "alphabetic";
 
     // ── Layer segment overlay ─────────────────────────────────────────────────
     if (showLayerOverlay) {
@@ -968,46 +991,119 @@ async function fetchJson(path) {
   return response.json();
 }
 
-// ─── Ops summary rendering ───────────────────────────────────────────────────
+// ─── 통합 KPI 패널 렌더링 ────────────────────────────────────────────────────
 
-function renderOpsSummary(insights) {
-  const panel = document.getElementById("opsPanel");
-  const badge = document.getElementById("opsBadge");
+function renderKpiPanel(insights, layers, tasks) {
+  const panel = document.getElementById("kpiPanel");
+  const grid  = document.getElementById("kpiGrid");
+  const badge = document.getElementById("kpiBadge");
 
-  if (!insights || !insights.available) {
+  if (!layers && !insights?.available && !tasks) {
     panel.hidden = true;
     return;
   }
-
   panel.hidden = false;
-  const s = insights.session;
-  badge.textContent = s.source || "heuristic";
-  badge.className = `source-badge ${s.source === "heuristic" ? "source-heuristic" : "source-external"}`;
 
-  function setStat(id, value, cls) {
-    const el = document.getElementById(id);
-    const valEl = el.querySelector(".ops-stat-value");
-    valEl.textContent = value;
-    el.className = `ops-stat ${cls || ""}`;
+  // ── 데이터 추출 ────────────────────────────────────────────────────────────
+  const s = insights?.available ? insights.session : null;
+
+  const apLayer = layers?.layers?.find((l) => l.id === "action_priority");
+  const dpLayer = layers?.layers?.find((l) => l.id === "disease_pest_risk");
+  const drLayer = layers?.layers?.find((l) => l.id === "data_reliability");
+
+  const highActionCount  = apLayer?.items.filter((i) => i.severity === "high").length  ?? 0;
+  const highDiseaseCount = dpLayer?.items.filter((i) => i.severity === "high").length  ?? 0;
+  const dataIssueCount   = drLayer?.items.filter((i) => i.severity !== "low").length   ?? 0;
+  const openTasks        = tasks?.tasks?.filter((t) => getTaskEffectiveStatus(t) !== "done").length ?? null;
+
+  // Health: insights 우선, 없으면 layer 기반 추정
+  const healthScore = s ? s.health_score : (layers ? (() => {
+    const apAvg = apLayer?.items.length
+      ? apLayer.items.reduce((a, b) => a + b.value, 0) / apLayer.items.length : 50;
+    return Math.round(100 - apAvg * 0.6);
+  })() : null);
+
+  const healthCls = healthScore == null ? "" :
+    healthScore >= 85 ? "stat-good" : healthScore >= 60 ? "stat-warn" : "stat-bad";
+
+  // ── KPI 카드 정의 ──────────────────────────────────────────────────────────
+  const kpiDefs = [
+    {
+      value:   healthScore != null ? String(healthScore) : "-",
+      label:   "종합 Health",
+      cls:     healthCls,
+      demo:    !s,
+      layerId: null,
+    },
+    {
+      value:   String(highActionCount),
+      label:   "즉시 조치 필요",
+      cls:     highActionCount > 0 ? "stat-bad" : "stat-good",
+      demo:    true,
+      layerId: "action_priority",
+    },
+    {
+      value:   String(highDiseaseCount),
+      label:   "병충해 고위험",
+      cls:     highDiseaseCount > 0 ? "stat-bad" : "stat-good",
+      demo:    true,
+      layerId: "disease_pest_risk",
+    },
+    {
+      value:   openTasks != null ? String(openTasks) : "-",
+      label:   "미완료 작업",
+      cls:     openTasks > 0 ? "stat-warn" : (openTasks === 0 ? "stat-good" : ""),
+      demo:    true,
+      layerId: null,
+    },
+  ];
+
+  grid.innerHTML = "";
+  for (const def of kpiDefs) {
+    const stat = document.createElement("div");
+    stat.className = `kpi-stat ${def.cls}`;
+
+    const val = createElement("span", "kpi-stat-value", def.value);
+    const lbl = createElement("span", "kpi-stat-label", def.label);
+    stat.append(val, lbl);
+
+    if (def.demo) {
+      stat.appendChild(createElement("span", "kpi-demo-dot", "DEMO"));
+    }
+
+    if (def.layerId && currentLayersData) {
+      stat.style.cursor = "pointer";
+      stat.title = "클릭: 해당 레이어 보기";
+      stat.addEventListener("click", () => {
+        activeLayerId = def.layerId;
+        showLayerOverlay = true;
+        updateLayerRowStates();
+        renderLayerLegend(getActiveLayer());
+        renderLayerSummary(getActiveLayer());
+        currentMap?.queueRender();
+        document.getElementById("layersPanel").hidden = false;
+      });
+    }
+    grid.appendChild(stat);
   }
 
-  setStat("statHealth", `${s.health_score}`, s.health_score >= 85 ? "stat-good" : s.health_score >= 60 ? "stat-warn" : "stat-bad");
-  setStat("statAlerts", s.alert_count, s.alert_count === 0 ? "stat-good" : s.alert_count <= 3 ? "stat-warn" : "stat-bad");
-  setStat("statPriorityRails", s.priority_rail_count, s.priority_rail_count === 0 ? "stat-good" : "stat-warn");
-  setStat("statGaps", s.gap_count, s.gap_count === 0 ? "stat-good" : "stat-warn");
-
+  // ── 직전 세션 대비 delta ───────────────────────────────────────────────────
   const deltaRow = document.getElementById("deltaRow");
-  const delta = s.delta;
-  if (delta && delta.compared_session) {
+  const delta = s?.delta;
+  if (delta?.compared_session) {
     deltaRow.hidden = false;
     const dH = delta.health_score;
-    const deltaHealth = document.getElementById("deltaHealth");
-    deltaHealth.textContent = dH >= 0 ? `+${dH}점` : `${dH}점`;
-    deltaHealth.className = `delta-value ${dH >= 0 ? "delta-pos" : "delta-neg"}`;
+    document.getElementById("deltaHealth").textContent = dH >= 0 ? `+${dH}점` : `${dH}점`;
+    document.getElementById("deltaHealth").className = `delta-value ${dH >= 0 ? "delta-pos" : "delta-neg"}`;
     document.getElementById("deltaCompared").textContent = delta.compared_session;
   } else {
     deltaRow.hidden = true;
   }
+
+  // ── 소스 배지 ──────────────────────────────────────────────────────────────
+  const src = s?.source || "demo";
+  badge.textContent = src;
+  badge.className = `source-badge ${src === "heuristic" ? "source-heuristic" : "source-external"}`;
 }
 
 // ─── Alert panel rendering ────────────────────────────────────────────────────
@@ -1915,88 +2011,6 @@ function focusTaskOnMap(task, map) {
   }
 }
 
-// ─── Quick summary (ops panel integration) ───────────────────────────────────
-
-function renderLayerQuickSummary(layers) {
-  if (!layers) return;
-
-  const apLayer = layers.layers?.find((l) => l.id === "action_priority");
-  const dpLayer = layers.layers?.find((l) => l.id === "disease_pest_risk");
-  const drLayer = layers.layers?.find((l) => l.id === "data_reliability");
-
-  const highActionCount = apLayer?.items.filter((i) => i.severity === "high").length ?? 0;
-  const highDiseaseCount = dpLayer?.items.filter((i) => i.severity === "high").length ?? 0;
-  const dataGapCount = drLayer?.items.filter((i) => i.severity !== "low").length ?? 0;
-  const priorityRails = new Set(
-    (apLayer?.items || []).filter((i) => i.severity !== "low").map((i) => i.rail_name)
-  ).size;
-
-  // Update existing ops stats if panel is hidden (no insights), else add layer summary
-  const opsPanel = document.getElementById("opsPanel");
-  let layerOpsPanel = document.getElementById("layerOpsPanel");
-
-  if (!layerOpsPanel) {
-    layerOpsPanel = document.createElement("section");
-    layerOpsPanel.className = "panel panel-ops panel-layer-ops";
-    layerOpsPanel.id = "layerOpsPanel";
-    layerOpsPanel.innerHTML = `
-      <div class="panel-head">
-        <h2>빠른 현황 요약</h2>
-        <span class="demo-badge">DEMO</span>
-      </div>
-      <div class="ops-grid" id="layerOpsGrid"></div>
-    `;
-    opsPanel.parentElement.insertBefore(layerOpsPanel, opsPanel.nextSibling);
-  }
-
-  layerOpsPanel.hidden = false;
-  const grid = document.getElementById("layerOpsGrid");
-  grid.innerHTML = "";
-
-  const stats = [
-    { id: "statHighAction", value: highActionCount, label: "즉시조치", cls: highActionCount > 0 ? "stat-bad" : "stat-good" },
-    { id: "statPriorityRailsL", value: priorityRails, label: "우선 Rail", cls: priorityRails > 0 ? "stat-warn" : "stat-good" },
-    { id: "statHighDisease", value: highDiseaseCount, label: "병충해↑", cls: highDiseaseCount > 0 ? "stat-bad" : "stat-good" },
-    { id: "statDataGap", value: dataGapCount, label: "데이터이상", cls: dataGapCount > 0 ? "stat-warn" : "stat-good" },
-  ];
-
-  const layerClickMap = {
-    statHighAction: "action_priority",
-    statPriorityRailsL: null,
-    statHighDisease: "disease_pest_risk",
-    statDataGap: "data_reliability",
-  };
-
-  for (const s of stats) {
-    const stat = document.createElement("div");
-    stat.className = `ops-stat ${s.cls}`;
-    stat.id = s.id;
-    const val = createElement("span", "ops-stat-value", String(s.value));
-    const lbl = createElement("span", "ops-stat-label", s.label);
-    stat.append(val, lbl);
-
-    const targetLayerId = layerClickMap[s.id];
-    if (targetLayerId !== undefined && s.value > 0) {
-      stat.style.cursor = "pointer";
-      stat.title = "클릭: 레이어 보기";
-      stat.addEventListener("click", () => {
-        if (targetLayerId && currentLayersData) {
-          activeLayerId = targetLayerId;
-          showLayerOverlay = true;
-          updateLayerRowStates();
-          const layer = getActiveLayer();
-          renderLayerLegend(layer);
-          renderLayerSummary(layer);
-          currentMap?.queueRender();
-          // Show layers panel
-          document.getElementById("layersPanel").hidden = false;
-        }
-      });
-    }
-
-    grid.appendChild(stat);
-  }
-}
 
 // ─── Session loading ──────────────────────────────────────────────────────────
 
@@ -2093,11 +2107,10 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   });
   currentMap = map;
 
-  renderOpsSummary(insights);
+  renderKpiPanel(insights, layers, tasks);
   renderAlertPanel(insights, map);
   renderRailList(manifest, frames, map, insights);
   renderLayersPanel(layers);
-  renderLayerQuickSummary(layers);
   renderTaskPanel(tasks, map);
   // Reset selection tabs
   selActiveTab = "info";

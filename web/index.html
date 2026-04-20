@@ -13,38 +13,19 @@
         <div class="brand">
           <p class="eyebrow">Farm Operations Dashboard</p>
           <h1>Picture Maps</h1>
-          <p class="summary" id="datasetSummary">데이터셋을 불러오는 중입니다.</p>
         </div>
 
-        <!-- 운영 요약 -->
-        <section class="panel panel-ops" id="opsPanel" hidden>
+        <!-- 작물 검출 현황 -->
+        <section class="panel panel-crop" id="cropPanel">
           <div class="panel-head">
-            <h2>운영 요약</h2>
-            <span class="source-badge" id="opsBadge" title="분석 방식">heuristic</span>
+            <h2>작물 검출 현황</h2>
+            <span class="demo-badge">DEMO</span>
           </div>
-          <div class="ops-grid">
-            <div class="ops-stat" id="statHealth">
-              <span class="ops-stat-value">-</span>
-              <span class="ops-stat-label">Health</span>
-            </div>
-            <div class="ops-stat" id="statAlerts">
-              <span class="ops-stat-value">-</span>
-              <span class="ops-stat-label">Alerts</span>
-            </div>
-            <div class="ops-stat" id="statPriorityRails">
-              <span class="ops-stat-value">-</span>
-              <span class="ops-stat-label">우선 Rail</span>
-            </div>
-            <div class="ops-stat" id="statGaps">
-              <span class="ops-stat-value">-</span>
-              <span class="ops-stat-label">공백 구간</span>
-            </div>
-          </div>
-          <div class="delta-row" id="deltaRow" hidden>
-            <span class="delta-label">직전 대비</span>
-            <span class="delta-value" id="deltaHealth"></span>
-            <span class="delta-sep">·</span>
-            <span class="delta-compared" id="deltaCompared"></span>
+          <div class="crop-stats" id="cropStats"></div>
+          <div class="crop-chart-wrap">
+            <div class="crop-chart-title">최근 30일 추이</div>
+            <div id="cropChart" class="crop-chart"></div>
+            <div class="crop-chart-legend" id="cropChartLegend"></div>
           </div>
         </section>
 
@@ -52,19 +33,10 @@
         <section class="panel panel-session">
           <div class="panel-head">
             <h2>Sessions</h2>
+            <span class="session-status" id="datasetSummary">로딩 중…</span>
           </div>
-          <!-- 디바이스 콤보박스 (JS로 렌더) -->
           <div id="deviceTabs"></div>
           <div class="session-list" id="sessionList"></div>
-        </section>
-
-        <!-- Rail 목록 -->
-        <section class="panel">
-          <div class="panel-head">
-            <h2>Rails</h2>
-            <button class="ghost-button" id="fitButton" type="button">전체 보기</button>
-          </div>
-          <div class="rail-list" id="railList"></div>
         </section>
 
         <!-- 알림 패널 -->
@@ -76,32 +48,6 @@
           <div class="alert-list" id="alertList"></div>
         </section>
 
-        <!-- Selection 패널 -->
-        <section class="panel panel-selection">
-          <div class="panel-head">
-            <h2>Selection</h2>
-            <span class="pill" id="selectionPill">none</span>
-          </div>
-          <div class="sel-tabs" id="selTabs">
-            <button class="sel-tab is-active" data-tab="info" type="button">프레임 정보</button>
-            <button class="sel-tab" data-tab="trend" id="trendTabBtn" type="button" disabled>추이 그래프</button>
-          </div>
-          <div id="selInfoContent">
-            <div id="selectionMeta" class="selection-meta">
-              <p>지도를 클릭하면 해당 위치의 4카메라 프레임을 볼 수 있습니다.</p>
-            </div>
-            <div id="selectionInsights" class="selection-insights" hidden></div>
-            <div id="segmentDetail" class="segment-detail" hidden></div>
-            <div class="hero-preview">
-              <img id="contactSheet" alt="" hidden />
-            </div>
-            <div class="camera-grid" id="cameraGrid"></div>
-          </div>
-          <div id="selTrendContent" class="sel-trend-content" hidden>
-            <div class="trend-rail-header" id="trendRailHeader"></div>
-            <div id="trendCharts" class="trend-charts"></div>
-          </div>
-        </section>
       </aside>
 
       <!-- ── 맵 스테이지 ────────────────────────────────────────────────── -->
@@ -138,7 +84,7 @@
               </div>
             </div>
             <div class="map-tip">
-              휠로 확대/축소, 드래그로 이동, 프레임 클릭 시 원본 4카메라 확인
+              휠로 확대/축소 · 드래그로 이동 · 클릭으로 프레임 확인
             </div>
           </div>
         </section>
@@ -146,7 +92,6 @@
 
       <!-- ── 우측 패널: 레이어 + 오늘 할 일 ──────────────────────────── -->
       <aside class="right-panel">
-        <!-- 맵 오버레이 레이어 -->
         <section class="panel panel-layers" id="layersPanel" hidden>
           <div class="panel-head">
             <h2>맵 오버레이 레이어</h2>
@@ -157,7 +102,6 @@
           <div class="layer-summary" id="layerSummary" hidden></div>
         </section>
 
-        <!-- 오늘 할 일 (Action Center) -->
         <section class="panel panel-tasks" id="tasksPanel" hidden>
           <div class="panel-head">
             <h2>오늘 할 일</h2>

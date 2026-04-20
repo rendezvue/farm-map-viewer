@@ -52,7 +52,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 300px;
+  grid-template-columns: 256px minmax(0, 1fr) 240px;
   grid-template-rows: 100%;
   height: 100%;
   gap: 18px;
@@ -119,7 +119,7 @@ button {
 }
 
 .brand {
-  padding: 22px 22px 18px;
+  padding: 18px 20px 16px;
 }
 
 .brand h1,
@@ -131,18 +131,23 @@ button {
 }
 
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--warm);
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
-.summary {
-  margin: 12px 0 0;
+/* session status (sessions panel head) */
+.session-status {
+  font-size: 10px;
   color: var(--muted);
-  line-height: 1.5;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .panel {
@@ -152,8 +157,30 @@ button {
 
 .panel-selection {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.sel-info-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sel-trend-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sel-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .panel-head {
@@ -286,31 +313,38 @@ button {
 .rail-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  max-height: 260px;
+  align-items: stretch;
+  gap: 7px;
+  max-height: 250px;
   overflow: auto;
-  padding-right: 6px;
+  padding-right: 4px;
   overscroll-behavior: contain;
 }
 
 .rail-chip {
-  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 9px 11px;
   border: 1px solid rgba(24, 49, 38, 0.11);
   background: var(--panel-strong);
   color: var(--text);
-  border-radius: 18px;
+  border-radius: 12px;
   text-align: left;
+  min-height: 52px;
 }
 
-.rail-chip strong,
-.rail-chip span {
+.rail-chip strong {
   display: block;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.rail-chip span {
+.rail-chip > span {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  display: block;
 }
 
 .rail-chip.is-active {
@@ -325,6 +359,7 @@ button {
 .selection-meta {
   color: var(--muted);
   line-height: 1.5;
+  padding-top: 2px;
 }
 
 .selection-meta dl {
@@ -525,13 +560,15 @@ button {
 .frame-annotation-label,
 .frame-camera-label {
   position: absolute;
-  color: rgba(255, 253, 247, 0.98);
+  color: rgba(255, 253, 247, 1);
   font-family: "Space Grotesk", "IBM Plex Sans KR", sans-serif;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.85),
-    0 0 10px rgba(0, 0, 0, 0.55);
+    0 0 3px rgba(0, 0, 0, 1),
+    0 1px 3px rgba(0, 0, 0, 1),
+    0 2px 6px rgba(0, 0, 0, 0.9),
+    0 0 14px rgba(0, 0, 0, 0.7);
   user-select: none;
   pointer-events: none;
   z-index: 2;
@@ -615,19 +652,72 @@ button {
   line-height: 1.5;
 }
 
-/* ─── Ops Summary Panel ───────────────────────────────────────────────────── */
+/* ─── 통합 KPI 패널 ───────────────────────────────────────────────────────── */
 
-.panel-ops {
+.panel-kpi {
   flex-shrink: 0;
 }
 
-.ops-grid {
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
+.kpi-stat {
+  position: relative;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 11px 10px 9px;
+  text-align: center;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.kpi-stat[style*="cursor: pointer"]:hover {
+  border-color: rgba(31,106,77,0.35);
+  box-shadow: 0 2px 8px rgba(31,106,77,0.1);
+}
+
+.kpi-stat-value {
+  display: block;
+  font-size: 26px;
+  font-weight: 700;
+  font-family: "Space Grotesk", sans-serif;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.kpi-stat-label {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+.kpi-demo-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 8px;
+  color: var(--warm);
+  opacity: 0.45;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.kpi-stat.stat-good { background: var(--good-bg); border-color: rgba(26,122,74,0.2); }
+.kpi-stat.stat-good .kpi-stat-value { color: var(--good); }
+.kpi-stat.stat-warn { background: var(--warn-bg); border-color: rgba(160,96,16,0.2); }
+.kpi-stat.stat-warn .kpi-stat-value { color: var(--warn); }
+.kpi-stat.stat-bad  { background: var(--bad-bg);  border-color: rgba(192,40,40,0.2); }
+.kpi-stat.stat-bad  .kpi-stat-value { color: var(--bad); }
+
+/* 하위 호환: ops-stat (alert 패널 등에서 아직 쓸 수 있음) */
 .ops-stat {
   background: var(--panel-strong);
   border: 1px solid var(--line);
@@ -635,7 +725,6 @@ button {
   padding: 10px 8px;
   text-align: center;
 }
-
 .ops-stat-value {
   display: block;
   font-size: 22px;
@@ -644,7 +733,6 @@ button {
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
-
 .ops-stat-label {
   display: block;
   font-size: 10px;
@@ -653,13 +741,12 @@ button {
   letter-spacing: 0.1em;
   margin-top: 3px;
 }
-
 .ops-stat.stat-good { background: var(--good-bg); border-color: rgba(26,122,74,0.2); }
 .ops-stat.stat-good .ops-stat-value { color: var(--good); }
 .ops-stat.stat-warn { background: var(--warn-bg); border-color: rgba(160,96,16,0.2); }
 .ops-stat.stat-warn .ops-stat-value { color: var(--warn); }
-.ops-stat.stat-bad { background: var(--bad-bg); border-color: rgba(192,40,40,0.2); }
-.ops-stat.stat-bad .ops-stat-value { color: var(--bad); }
+.ops-stat.stat-bad  { background: var(--bad-bg);  border-color: rgba(192,40,40,0.2); }
+.ops-stat.stat-bad  .ops-stat-value { color: var(--bad); }
 
 .source-badge {
   display: inline-flex;
@@ -1967,4 +2054,308 @@ body.modal-open { overflow: hidden; }
     right: 18px;
     max-width: none;
   }
+}
+
+/* ─── 작물 검출 현황 패널 ───────────────────────────────────��────────────── */
+
+.panel-crop { flex-shrink: 0; }
+
+.crop-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.crop-stat-card {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px 8px;
+}
+
+.crop-stat-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.crop-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.crop-stat-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.crop-stat-trend {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.crop-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  font-family: "Space Grotesk", sans-serif;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.crop-chart-wrap {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px 8px;
+}
+
+.crop-chart-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.crop-chart { width: 100%; }
+
+.crop-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.crop-chart-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+
+.crop-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.crop-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── 사이드바 + 우측 패널 80% 스케일 ────────────────────────────────────── */
+
+.sidebar,
+.right-panel {
+  font-size: 0.8em;
+}
+
+/* Internal flex gaps */
+.sidebar { gap: 13px; }
+.right-panel { gap: 13px; }
+
+/* Brand */
+.sidebar .brand {
+  padding: 14px 16px 13px;
+}
+
+/* Panels */
+.sidebar .panel,
+.right-panel .panel {
+  padding: 14px;
+}
+
+.sidebar .panel-head,
+.right-panel .panel-head {
+  margin-bottom: 11px;
+  gap: 10px;
+}
+
+/* Buttons */
+.sidebar .ghost-button,
+.right-panel .ghost-button {
+  padding: 8px 11px;
+}
+
+.sidebar .pill,
+.right-panel .pill {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+/* Sessions */
+.sidebar .session-list {
+  max-height: 176px;
+}
+
+.sidebar .session-chip {
+  padding: 7px 10px;
+}
+
+.sidebar .device-select {
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  font-size: 10px;
+}
+
+/* Rails */
+.sidebar .rail-list {
+  max-height: 200px;
+  gap: 6px;
+}
+
+.sidebar .rail-chip {
+  padding: 7px 9px;
+  min-height: 42px;
+}
+
+/* KPI */
+.sidebar .kpi-grid {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.sidebar .kpi-stat {
+  padding: 9px 8px 7px;
+}
+
+.sidebar .kpi-stat-value {
+  font-size: 21px;
+}
+
+.sidebar .kpi-stat-label {
+  font-size: 8px;
+}
+
+/* Alerts */
+.sidebar .alert-list {
+  max-height: 160px;
+}
+
+.sidebar .alert-item {
+  padding: 7px 8px;
+}
+
+/* Selection tabs */
+.sidebar .sel-tabs {
+  margin-bottom: 10px;
+}
+
+/* Selection meta */
+.sidebar .selection-meta dl {
+  grid-template-columns: 67px 1fr;
+  gap: 6px 8px;
+}
+
+.sidebar .hero-preview {
+  margin-top: 11px;
+}
+
+.sidebar .camera-grid {
+  gap: 10px;
+  margin-top: 11px;
+}
+
+.sidebar .camera-card {
+  padding: 8px;
+}
+
+/* Delta row */
+.sidebar .delta-row {
+  font-size: 10px;
+}
+
+/* Selection insights */
+.sidebar .selection-insights {
+  padding: 8px 10px;
+  margin: 8px 0 5px;
+}
+
+.sidebar .si-score {
+  font-size: 16px;
+}
+
+/* Segment detail */
+.sidebar .segment-detail {
+  padding: 10px 11px;
+}
+
+.sidebar .seg-detail-score {
+  font-size: 21px;
+}
+
+.sidebar .seg-detail-title {
+  font-size: 12px;
+}
+
+/* Trend charts */
+.sidebar .trend-charts {
+  gap: 6px;
+}
+
+.sidebar .trend-rail-name {
+  font-size: 12px;
+}
+
+.sidebar .trend-cur-stat strong {
+  font-size: 14px;
+}
+
+/* Right panel – layers */
+.right-panel .layers-list {
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.right-panel .layer-row {
+  padding: 7px 10px;
+  gap: 8px;
+}
+
+.right-panel .layer-indicator {
+  height: 29px;
+}
+
+.right-panel .layer-label {
+  font-size: 10px;
+}
+
+.right-panel .layer-stat-value {
+  font-size: 14px;
+}
+
+/* Right panel – tasks */
+.right-panel .task-filter-row {
+  margin-bottom: 8px;
+}
+
+.right-panel .task-item {
+  padding: 8px 10px;
+}
+
+.right-panel .task-priority-icon {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+}
+
+.right-panel .task-done-toggle {
+  width: 19px;
+  height: 19px;
+  font-size: 10px;
 }
