@@ -30,6 +30,7 @@ farm-map-viewer/
 │   ├── app.js
 │   ├── index.html
 │   └── styles.css
+├── WORKLOG.md          # 작업 로그 / 작업 주체 이력
 └── build/
     └── <dataset_key>/
         ├── manifest.json
