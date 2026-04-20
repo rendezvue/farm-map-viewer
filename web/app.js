@@ -2457,22 +2457,6 @@ async function bootstrap() {
 
   const fitButton = document.getElementById("fitButton");
   if (fitButton) fitButton.addEventListener("click", () => currentMap?.fitToBounds());
-  document.getElementById("zoomInButton").addEventListener("click", () => {
-    currentMap?.zoomBy(0.5, { x: currentMap.viewportWidth / 2, y: currentMap.viewportHeight / 2 });
-  });
-  document.getElementById("zoomOutButton").addEventListener("click", () => {
-    currentMap?.zoomBy(-0.5, { x: currentMap.viewportWidth / 2, y: currentMap.viewportHeight / 2 });
-  });
-  document.getElementById("reloadButton").addEventListener("click", () => window.location.reload());
-
-  document.getElementById("toggleOverlayButton").addEventListener("click", () => {
-    showRiskOverlay = !showRiskOverlay;
-    const btn = document.getElementById("toggleOverlayButton");
-    btn.classList.toggle("is-active", showRiskOverlay);
-    currentMap?.queueRender();
-  });
-  // Default: overlay on
-  document.getElementById("toggleOverlayButton").classList.add("is-active");
 
   // toggleLayersButton은 HTML에서 제거됨 (우측 패널로 이동) — 없으면 skip
   const toggleLayersBtn = document.getElementById("toggleLayersButton");

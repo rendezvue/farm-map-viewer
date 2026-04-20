@@ -102,6 +102,21 @@ button {
   gap: 16px;
 }
 
+.sidebar-report {
+  display: flex;
+}
+
+.sidebar-report .report-btn {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  justify-content: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
 .brand,
 .panel,
 .map-card,
@@ -122,12 +137,19 @@ button {
   padding: 18px 20px 16px;
 }
 
-.brand h1,
-.topbar h2,
 .panel h2 {
   margin: 0;
   font-family: "Space Grotesk", "IBM Plex Sans KR", sans-serif;
   letter-spacing: -0.03em;
+}
+
+.brand h1,
+.topbar h2 {
+  margin: 0;
+  font-family: "IBM Plex Sans KR", "Noto Sans KR", "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .eyebrow {
@@ -137,6 +159,39 @@ button {
   letter-spacing: 0.18em;
   font-size: 11px;
   font-weight: 700;
+}
+
+.brand,
+.topbar-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  gap: 4px;
+}
+
+.topbar-copy {
+  gap: 2px;
+}
+
+.brand .eyebrow,
+.topbar-copy .eyebrow {
+  margin-bottom: 0;
+  color: rgba(24, 49, 38, 0.62);
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.brand h1 {
+  font-size: 31px;
+}
+
+.topbar h2 {
+  font-size: 28px;
 }
 
 /* session status (sessions panel head) */
@@ -422,9 +477,9 @@ button {
 }
 
 .map-stage {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .topbar {
@@ -433,6 +488,11 @@ button {
   justify-content: space-between;
   gap: 16px;
   padding: 18px 22px;
+}
+
+.topbar.topbar-compact {
+  justify-content: flex-end;
+  padding: 14px 18px;
 }
 
 .topbar-copy p,
@@ -451,6 +511,8 @@ button {
 }
 
 .map-card {
+  flex: 1;
+  display: flex;
   background: linear-gradient(180deg, rgba(252, 250, 244, 0.92), rgba(239, 233, 219, 0.86));
   overflow: hidden;
   min-height: 0;
@@ -458,6 +520,7 @@ button {
 
 .map-viewport {
   position: relative;
+  flex: 1;
   height: 100%;
   min-height: 520px;
   overflow: hidden;

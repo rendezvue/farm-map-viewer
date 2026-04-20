@@ -3,18 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Farm Operations Dashboard</title>
+    <title>FARMILY 작물 맵</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
       <aside class="sidebar">
-        <div class="brand">
-          <p class="eyebrow">Farm Operations Dashboard</p>
-          <h1>Picture Maps</h1>
-        </div>
-
         <!-- 작물 검출 현황 -->
         <section class="panel panel-crop" id="cropPanel">
           <div class="panel-head">
@@ -28,6 +23,10 @@
             <div class="crop-chart-legend" id="cropChartLegend"></div>
           </div>
         </section>
+
+        <div class="sidebar-report">
+          <button id="reportButton" type="button" class="report-btn">리포트</button>
+        </div>
 
         <!-- 세션 선택 -->
         <section class="panel panel-session">
@@ -52,20 +51,6 @@
 
       <!-- ── 맵 스테이지 ────────────────────────────────────────────────── -->
       <main class="map-stage">
-        <header class="topbar">
-          <div class="topbar-copy">
-            <p class="eyebrow">Tiled Viewer</p>
-            <h2>운영 의사결정 대시보드</h2>
-          </div>
-          <div class="toolbar">
-            <button id="zoomOutButton" type="button">-</button>
-            <button id="zoomInButton" type="button">+</button>
-            <button id="toggleOverlayButton" type="button" title="위험도 오버레이 토글">위험도</button>
-            <button id="reportButton" type="button" class="report-btn">리포트</button>
-            <button id="reloadButton" type="button">새로고침</button>
-          </div>
-        </header>
-
         <section class="map-card">
           <div id="mapViewport" class="map-viewport">
             <div id="tilePane" class="tile-pane"></div>
