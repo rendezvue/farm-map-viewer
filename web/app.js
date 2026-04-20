@@ -75,91 +75,139 @@ function deltaText(delta) {
   return delta > 0 ? `+${delta}` : String(delta);
 }
 
-const CROP_PANEL_DAY_COUNT = 30;
 const CROP_PANEL_SERIES = [
   {
     id: "flower",
     label: "꽃",
     color: "#d96f9c",
-    value: 2102,
-    start: 1680,
-    curve: 1.08,
-    cycles: 3.3,
-    phase: 0.7,
-    wave: 120,
-    wave2: 45,
   },
   {
     id: "unripe",
     label: "안익음",
     color: "#67a95c",
-    value: 30113,
-    start: 22340,
-    curve: 1.03,
-    cycles: 2.4,
-    phase: 0.35,
-    wave: 620,
-    wave2: 210,
   },
   {
     id: "midripe",
     label: "덜익음",
     color: "#efb44a",
-    value: 12013,
-    start: 7480,
-    curve: 1.1,
-    cycles: 2.8,
-    phase: 1.4,
-    wave: 380,
-    wave2: 150,
   },
   {
     id: "ripe",
     label: "익음",
     color: "#d96844",
-    value: 5020,
-    start: 1960,
-    curve: 1.18,
-    cycles: 3.1,
-    phase: 2.1,
-    wave: 230,
-    wave2: 80,
   },
 ];
 
-function generateCropTrendSeries(meta, dayCount = CROP_PANEL_DAY_COUNT) {
-  const points = [];
-  for (let index = 0; index < dayCount; index += 1) {
-    const t = index / (dayCount - 1);
-    const baseline = meta.start + (meta.value - meta.start) * Math.pow(t, meta.curve);
-    const wave =
-      Math.sin(t * Math.PI * meta.cycles + meta.phase) * meta.wave +
-      Math.cos(t * Math.PI * (meta.cycles * 0.75) + meta.phase * 1.35) * meta.wave2;
-    points.push(Math.max(0, Math.round(baseline + wave)));
-  }
-  const endOffset = meta.value - points[points.length - 1];
-  return points.map((point, index) =>
-    Math.max(0, Math.round(point + endOffset * (index / (dayCount - 1)))),
-  );
+function toCropCount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.round(numeric));
 }
 
-const CROP_PANEL_DATA = CROP_PANEL_SERIES.map((series) => ({
-  ...series,
-  points: generateCropTrendSeries(series),
-}));
-
-function getCropTrendDirection(points) {
-  const last = points[points.length - 1];
-  const prev = points[points.length - 2] ?? last;
-  const delta = last - prev;
-  const threshold = Math.max(6, Math.abs(last) * 0.0035);
-  if (Math.abs(delta) < threshold) return { symbol: "•", color: "var(--muted)" };
-  return delta > 0
-    ? { symbol: "▲", color: "var(--good)" }
-    : { symbol: "▼", color: "var(--bad)" };
+function toCropPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.round(numeric * 10) / 10;
 }
 
-function buildCropTrendSvg(seriesData) {
+function formatCropDelta(value) {
+  const numeric = toCropPercent(value);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(1)}%`;
+}
+
+function cropDeltaClass(value) {
+  const numeric = toCropPercent(value);
+  if (numeric > 0) return "is-up";
+  if (numeric < 0) return "is-down";
+  return "is-flat";
+}
+
+function buildCropPanelPlaceholder(sessionName = "-") {
+  return {
+    available: false,
+    session: sessionName,
+    counts: {
+      flower: 0,
+      unripe: 0,
+      midripe: 0,
+      ripe: 0,
+      total: 0,
+    },
+    trend_30d: {
+      points: [],
+      delta_pct: {
+        flower: 0,
+        unripe: 0,
+        midripe: 0,
+        ripe: 0,
+        total: 0,
+      },
+    },
+  };
+}
+
+function getCropPanelState(summary = currentCropSummary) {
+  const fallback = {
+    available: false,
+    session: summary?.session || "-",
+    counts: {
+      flower: 0,
+      unripe: 0,
+      midripe: 0,
+      ripe: 0,
+      total: 0,
+    },
+    points: [],
+    deltaPct: {
+      flower: 0,
+      unripe: 0,
+      midripe: 0,
+      ripe: 0,
+      total: 0,
+    },
+  };
+  if (!summary || typeof summary !== "object") return fallback;
+
+  const counts = summary.counts || {};
+  const trend = summary.trend_30d || {};
+  const points = Array.isArray(trend.points) ? trend.points : [];
+  const deltaPct = trend.delta_pct || {};
+  const normalizedCounts = {
+    flower: toCropCount(counts.flower),
+    unripe: toCropCount(counts.unripe),
+    midripe: toCropCount(counts.midripe),
+    ripe: toCropCount(counts.ripe),
+  };
+  normalizedCounts.total =
+    toCropCount(counts.total) ||
+    normalizedCounts.flower + normalizedCounts.unripe + normalizedCounts.midripe + normalizedCounts.ripe;
+
+  return {
+    available: Boolean(summary.available),
+    session: summary.session || "-",
+    counts: normalizedCounts,
+    points,
+    deltaPct: {
+      flower: toCropPercent(deltaPct.flower),
+      unripe: toCropPercent(deltaPct.unripe),
+      midripe: toCropPercent(deltaPct.midripe),
+      ripe: toCropPercent(deltaPct.ripe),
+      total: toCropPercent(deltaPct.total),
+    },
+  };
+}
+
+function buildCropSeriesData(cropState) {
+  return CROP_PANEL_SERIES.map((series) => ({
+    ...series,
+    value: cropState.counts[series.id] ?? 0,
+    deltaPct: cropState.deltaPct[series.id] ?? 0,
+    points: cropState.points.map((point) => toCropCount(point[series.id])),
+  }));
+}
+
+function buildCropTrendSvg(seriesData, xLabels) {
   const width = 320;
   const height = 204;
   const padding = { top: 16, right: 70, bottom: 24, left: 56 };
@@ -169,18 +217,21 @@ function buildCropTrendSvg(seriesData) {
   const bandHeight = (chartHeight - bandGap * (seriesData.length - 1)) / seriesData.length;
   const pointCount = seriesData[0]?.points.length || 0;
   const maxIndex = Math.max(1, pointCount - 1);
-  const guideIndices = [0, 7, 14, 21, maxIndex];
-  const xForIndex = (index) => padding.left + (index / maxIndex) * chartWidth;
-  const now = new Date();
-
-  const dateLabels = guideIndices.map((index) => {
-    const labelDate = new Date(now);
-    labelDate.setDate(now.getDate() - (maxIndex - index));
-    return {
-      index,
-      label: labelDate.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }),
-    };
-  });
+  const guideIndices = [...new Set([
+    0,
+    Math.floor(maxIndex * 0.25),
+    Math.floor(maxIndex * 0.5),
+    Math.floor(maxIndex * 0.75),
+    maxIndex,
+  ])];
+  const xForIndex = (index) => {
+    if (pointCount <= 1) return padding.left + chartWidth / 2;
+    return padding.left + (index / maxIndex) * chartWidth;
+  };
+  const dateLabels = guideIndices.map((index) => ({
+    index,
+    label: xLabels[index] || "",
+  }));
 
   const defs = seriesData.map((series) => `
     <linearGradient id="cropFill-${series.id}" x1="0" x2="0" y1="0" y2="1">
@@ -207,13 +258,14 @@ function buildCropTrendSvg(seriesData) {
       return bandBottom - normalized * (bandHeight - 12) - 6;
     };
     const linePoints = series.points.map((value, index) => `${xForIndex(index).toFixed(1)},${yForValue(value).toFixed(1)}`);
+    const lastIndex = Math.max(0, series.points.length - 1);
     const areaPoints = [
       `${xForIndex(0).toFixed(1)},${bandBottom.toFixed(1)}`,
       ...linePoints,
-      `${xForIndex(maxIndex).toFixed(1)},${bandBottom.toFixed(1)}`,
+      `${xForIndex(lastIndex).toFixed(1)},${bandBottom.toFixed(1)}`,
     ].join(" ");
-    const lastValue = series.points[series.points.length - 1];
-    const lastX = xForIndex(maxIndex);
+    const lastValue = series.points[lastIndex];
+    const lastX = xForIndex(lastIndex);
     const lastY = yForValue(lastValue);
     const valueLabel = formatCount(lastValue);
     const pillWidth = Math.max(42, valueLabel.length * 7 + 12);
@@ -246,50 +298,70 @@ function buildCropTrendSvg(seriesData) {
   `;
 }
 
-function renderCropPanel() {
+function renderCropPanel(summary = currentCropSummary) {
   const panel = document.getElementById("cropPanel");
   const stats = document.getElementById("cropStats");
   const chart = document.getElementById("cropChart");
   const legend = document.getElementById("cropChartLegend");
-  if (!panel || !stats || !chart || !legend) return;
+  const sessionLabel = document.getElementById("cropSessionLabel");
+  if (!panel || !stats || !chart || !legend || !sessionLabel) return;
 
-  const totalCount = CROP_PANEL_DATA.reduce((sum, series) => sum + series.value, 0);
+  const cropState = getCropPanelState(summary);
+  const seriesData = buildCropSeriesData(cropState);
+  const totalCount = cropState.counts.total;
   const title = document.querySelector("#cropPanel .crop-chart-title");
   if (title) title.textContent = `최근 30일 통합 추이 · 총 ${formatCount(totalCount)}개`;
+  sessionLabel.textContent = `세션 검출량 (${cropState.session})`;
 
   panel.hidden = false;
   stats.innerHTML = "";
-  for (const series of CROP_PANEL_DATA) {
-    const share = totalCount > 0 ? Math.round((series.value / totalCount) * 100) : 0;
-    const direction = getCropTrendDirection(series.points);
+  for (const series of seriesData) {
     const card = document.createElement("div");
     card.className = "crop-stat-card";
-    card.title = `${series.label}: 전체 검출의 ${share}%`;
+    card.title = `${series.label} ${formatCount(series.value)}개 · 증감률 ${formatCropDelta(series.deltaPct)}`;
     card.style.borderColor = hexToRgba(series.color, 0.24);
     card.style.background = `linear-gradient(180deg, ${hexToRgba(series.color, 0.1)}, rgba(255,255,255,0.55))`;
     card.innerHTML = `
       <div class="crop-stat-line">
-        <span class="crop-dot" style="background:${series.color}"></span>
-        <span class="crop-stat-label">${series.label}</span>
-        <span class="crop-stat-share">${share}%</span>
-        <strong class="crop-stat-value">${formatCount(series.value)}개</strong>
-        <span class="crop-stat-trend" style="color:${direction.color}">${direction.symbol}</span>
+        <div class="crop-stat-main">
+          <span class="crop-dot" style="background:${series.color}"></span>
+          <span class="crop-stat-label">${series.label}</span>
+        </div>
+        <div class="crop-stat-metrics">
+          <strong class="crop-stat-value">${formatCount(series.value)}개</strong>
+          <span class="crop-stat-delta ${cropDeltaClass(series.deltaPct)}">증감률 ${formatCropDelta(series.deltaPct)}</span>
+        </div>
       </div>
     `;
     stats.appendChild(card);
   }
 
-  chart.innerHTML = buildCropTrendSvg(CROP_PANEL_DATA);
-  legend.innerHTML = CROP_PANEL_DATA.map((series) => `
+  const xLabels = cropState.points.map((point) => {
+    if (!point?.date) return "";
+    const date = new Date(`${point.date}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return point.date;
+    return date.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
+  });
+  if (cropState.points.length > 0) {
+    chart.innerHTML = buildCropTrendSvg(seriesData, xLabels);
+  } else {
+    chart.innerHTML = `<div class="crop-chart-empty">최근 30일 데이터가 없습니다.</div>`;
+  }
+  legend.innerHTML = `${seriesData.map((series) => `
     <span class="crop-legend-item">
       <span class="crop-legend-dot" style="background:${series.color}"></span>
-      ${series.label} ${formatCount(series.value)}개
+      ${series.label} 증감률 ${formatCropDelta(series.deltaPct)}
     </span>
-  `).join("");
+  `).join("")}
+    <span class="crop-legend-item is-total">
+      <span class="crop-legend-dot is-total"></span>
+      전체 작물 증감률 ${formatCropDelta(cropState.deltaPct.total)}
+    </span>`;
 }
 
 // ─── Insights store ───────────────────────────────────────────────────────────
 
+let currentCropSummary = null;
 let currentInsights = null;
 let showRiskOverlay = true;
 
@@ -2307,9 +2379,19 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   currentTrends = trends;
   activeTrendRail = null;
 
+  // Load crop summary
+  let cropSummary = null;
+  try {
+    cropSummary = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/crop-summary`);
+  } catch (_) {
+    cropSummary = null;
+  }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentCropSummary = cropSummary || buildCropPanelPlaceholder(sessionName);
+
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
-  renderCropPanel();
+  renderCropPanel(currentCropSummary);
 
   if (currentMap) {
     currentMap.destroy();
@@ -2436,6 +2518,8 @@ async function bootstrap() {
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
     activeSessionBtn = btn;
     btn.classList.add("is-active");
+    currentCropSummary = buildCropPanelPlaceholder(sessionName);
+    renderCropPanel(currentCropSummary);
     summary.textContent = `${deviceName}/${sessionName} 로딩 중...`;
     try {
       await loadSession(deviceName, sessionName, loadToken);

@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .config import BuildConfig
+from .crop_stats import build_crop_summary_payload
 from .layers import generate_demo_layers_runtime
 from .tasks import generate_tasks
 from .trends import generate_trends
@@ -27,6 +28,7 @@ SESSION_REPORT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/report$"
 SESSION_LAYERS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/layers$")
 SESSION_TASKS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/tasks$")
 SESSION_TRENDS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/trends$")
+SESSION_CROP_SUMMARY_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/crop-summary$")
 
 
 class SessionData:
@@ -49,6 +51,7 @@ class SessionData:
                 pass
         self.tasks: dict[str, Any] | None = None
         self.trends: dict[str, Any] | None = None
+        self.crop_counts: dict[str, Any] | None = None
 
 
 class PictureMapsHandler(SimpleHTTPRequestHandler):
@@ -237,6 +240,27 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                     manifest=data.manifest,
                 )
             self.serve_json(data.trends, send_body=send_body)
+            return
+
+        crop_summary_match = SESSION_CROP_SUMMARY_RE.match(path)
+        if crop_summary_match:
+            device, session = crop_summary_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            payload = build_crop_summary_payload(
+                device_name=device,
+                session_name=session,
+                manifest=data.manifest,
+                cached_counts=data.crop_counts,
+                sessions=self.sessions,
+            )
+            data.crop_counts = {
+                "source": payload.get("source", "runtime"),
+                "counts": payload.get("counts", {}),
+            }
+            self.serve_json(payload, send_body=send_body)
             return
 
         tile_match = TILE_RE.match(path)

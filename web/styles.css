@@ -2123,6 +2123,16 @@ body.modal-open { overflow: hidden; }
 
 .panel-crop { flex-shrink: 0; }
 
+.crop-session-label {
+  margin: 2px 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .crop-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
@@ -2143,9 +2153,16 @@ body.modal-open { overflow: hidden; }
 .crop-stat-line {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.crop-stat-main {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
   min-width: 0;
-  white-space: nowrap;
 }
 
 .crop-dot {
@@ -2162,23 +2179,17 @@ body.modal-open { overflow: hidden; }
   color: var(--muted);
 }
 
-.crop-stat-share {
-  flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.crop-stat-trend {
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
+.crop-stat-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
   flex-shrink: 0;
 }
 
 .crop-stat-value {
   min-width: 0;
-  margin-left: auto;
   font-size: clamp(13px, 1.25vw, 15px);
   font-weight: 700;
   font-family: "Space Grotesk", sans-serif;
@@ -2188,6 +2199,16 @@ body.modal-open { overflow: hidden; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.crop-stat-delta {
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.crop-stat-delta.is-up { color: var(--good); }
+.crop-stat-delta.is-down { color: var(--bad); }
+.crop-stat-delta.is-flat { color: var(--muted); }
 
 .crop-chart-wrap {
   background: var(--panel-strong);
@@ -2213,6 +2234,18 @@ body.modal-open { overflow: hidden; }
   height: auto;
 }
 
+.crop-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 148px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.45);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .crop-chart-legend {
   display: flex;
   gap: 10px;
@@ -2234,6 +2267,14 @@ body.modal-open { overflow: hidden; }
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.crop-legend-item.is-total {
+  color: var(--ink);
+}
+
+.crop-legend-dot.is-total {
+  background: rgba(24,49,38,0.65);
 }
 
 /* ─── 사이드바 + 우측 패널 80% 스케일 ────────────────────────────────────── */
