@@ -253,7 +253,7 @@ function buildCropTrendSvg(seriesData, xLabels) {
 
   const guides = guideIndices.map((index) => {
     const x = xForIndex(index).toFixed(1);
-    return `<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}" stroke="rgba(24,49,38,0.1)" stroke-dasharray="3 5"/>`;
+    return `<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${height - padding.bottom}" stroke="rgba(255,255,255,0.05)" stroke-dasharray="3 5"/>`;
   }).join("");
 
   const bands = seriesData.map((series, seriesIndex) => {
@@ -285,7 +285,7 @@ function buildCropTrendSvg(seriesData, xLabels) {
 
     return `
       <rect x="${padding.left}" y="${bandTop.toFixed(1)}" width="${chartWidth}" height="${bandHeight.toFixed(1)}" rx="12" fill="${hexToRgba(series.color, 0.05)}"/>
-      <text x="10" y="${(bandTop + bandHeight / 2 + 4).toFixed(1)}" font-size="11" font-weight="700" fill="rgba(24,49,38,0.72)">${series.label}</text>
+      <text x="10" y="${(bandTop + bandHeight / 2 + 4).toFixed(1)}" font-size="11" font-weight="700" fill="rgba(221,234,223,0.65)">${series.label}</text>
       <polyline points="${areaPoints}" fill="url(#cropFill-${series.id})" stroke="none"/>
       <polyline points="${linePoints.join(" ")}" fill="none" stroke="${series.color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4.4" fill="${series.color}" stroke="rgba(255,255,255,0.95)" stroke-width="2"/>
@@ -295,13 +295,13 @@ function buildCropTrendSvg(seriesData, xLabels) {
   }).join("");
 
   const axis = dateLabels.map(({ index, label }) => `
-    <text x="${xForIndex(index).toFixed(1)}" y="${height - 6}" text-anchor="middle" font-size="9.5" fill="rgba(95,110,99,0.7)">${label}</text>
+    <text x="${xForIndex(index).toFixed(1)}" y="${height - 6}" text-anchor="middle" font-size="9.5" fill="rgba(125,152,137,0.7)">${label}</text>
   `).join("");
 
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="최근 30일간 작물 생육 단계 및 병충해 검출 추이">
       <defs>${defs}</defs>
-      <rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="18" fill="rgba(255,255,255,0.42)" stroke="rgba(24,49,38,0.08)"/>
+      <rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="8" fill="rgba(23,31,28,0.9)" stroke="rgba(39,48,41,0.8)"/>
       ${guides}
       ${bands}
       ${axis}
@@ -330,8 +330,8 @@ function renderCropPanel(summary = currentCropSummary) {
     const card = document.createElement("div");
     card.className = "crop-stat-card";
     card.title = `${series.label} ${formatCount(series.value)}개 · 증감률 ${formatCropDelta(series.deltaPct)}`;
-    card.style.borderColor = hexToRgba(series.color, 0.24);
-    card.style.background = `linear-gradient(180deg, ${hexToRgba(series.color, 0.1)}, rgba(255,255,255,0.55))`;
+    card.style.borderColor = hexToRgba(series.color, 0.22);
+    card.style.background = `${hexToRgba(series.color, 0.07)}`;
     card.innerHTML = `
       <div class="crop-stat-line">
         <div class="crop-stat-main">
@@ -1491,17 +1491,17 @@ class TileMap {
       ctx.stroke();
       // Rail name pill — always visible regardless of zoom
       const railLabel = rail.name.replace("rail_", "R");
-      ctx.font = 'bold 11px "Space Grotesk", "IBM Plex Sans KR", sans-serif';
+      ctx.font = 'bold 11px "DM Mono", "Noto Sans KR", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const rlW = ctx.measureText(railLabel).width + 12;
       const rlH = 17;
       const rlX = clamp(screen.x, rlW / 2 + 4, width - rlW / 2 - 4);
-      ctx.fillStyle = "rgba(8, 30, 22, 0.78)";
+      ctx.fillStyle = "rgba(11, 15, 13, 0.88)";
       ctx.beginPath();
       ctx.roundRect(rlX - rlW / 2, 5, rlW, rlH, 4);
       ctx.fill();
-      ctx.fillStyle = "#c8ead8";
+      ctx.fillStyle = "#45d46a";
       ctx.fillText(railLabel, rlX, 5 + rlH / 2);
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
@@ -1536,9 +1536,9 @@ class TileMap {
     const tickStep = chooseTickStep(screenPxPerMeter);
     const firstMeter = Math.floor(this.manifest.world.odom_x_min / tickStep) * tickStep;
     const lastMeter = this.manifest.world.odom_x_max + tickStep;
-    ctx.strokeStyle = "rgba(185, 105, 53, 0.15)";
+    ctx.strokeStyle = "rgba(39, 48, 41, 0.4)";
     ctx.lineWidth = 1;
-    ctx.font = 'bold 11px "IBM Plex Sans KR", sans-serif';
+    ctx.font = 'bold 11px "DM Mono", monospace';
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     for (let meter = firstMeter; meter <= lastMeter; meter += tickStep) {
@@ -1553,11 +1553,11 @@ class TileMap {
       const mW = ctx.measureText(mLabel).width + 10;
       const mH = 16;
       const mY = screen.y - mH / 2;
-      ctx.fillStyle = "rgba(8, 30, 22, 0.70)";
+      ctx.fillStyle = "rgba(11, 15, 13, 0.85)";
       ctx.beginPath();
       ctx.roundRect(6, mY, mW, mH, 3);
       ctx.fill();
-      ctx.fillStyle = "#f5c97a";
+      ctx.fillStyle = "#7d9889";
       ctx.fillText(mLabel, 11, screen.y);
     }
     ctx.textBaseline = "alphabetic";
@@ -2588,15 +2588,15 @@ function buildTrendSVG(sessions, values, higherIsBad) {
   const lastLabel = sessions[n - 1] || "현재";
 
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-  <text x="${pad.left - 3}" y="${pad.top + 5}" text-anchor="end" font-size="8.5" fill="rgba(95,110,99,0.65)">${Math.round(maxV)}</text>
-  <text x="${pad.left - 3}" y="${pad.top + iH + 4}" text-anchor="end" font-size="8.5" fill="rgba(95,110,99,0.65)">${Math.round(minV)}</text>
-  <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left + iW}" y2="${pad.top}" stroke="rgba(95,110,99,0.08)" stroke-width="1"/>
-  <line x1="${pad.left}" y1="${pad.top + iH}" x2="${pad.left + iW}" y2="${pad.top + iH}" stroke="rgba(95,110,99,0.12)" stroke-width="1"/>
-  <path d="${areaD}" fill="${lineCol}" opacity="0.07"/>
+  <text x="${pad.left - 3}" y="${pad.top + 5}" text-anchor="end" font-size="8.5" fill="rgba(125,152,137,0.65)">${Math.round(maxV)}</text>
+  <text x="${pad.left - 3}" y="${pad.top + iH + 4}" text-anchor="end" font-size="8.5" fill="rgba(125,152,137,0.65)">${Math.round(minV)}</text>
+  <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left + iW}" y2="${pad.top}" stroke="rgba(39,48,41,0.5)" stroke-width="1"/>
+  <line x1="${pad.left}" y1="${pad.top + iH}" x2="${pad.left + iW}" y2="${pad.top + iH}" stroke="rgba(39,48,41,0.7)" stroke-width="1"/>
+  <path d="${areaD}" fill="${lineCol}" opacity="0.08"/>
   <path d="${pathD}" fill="none" stroke="${lineCol}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
   ${dots}
-  <text x="${px(0).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(95,110,99,0.55)">${firstLabel}</text>
-  <text x="${px(n - 1).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(95,110,99,0.55)">${lastLabel}</text>
+  <text x="${px(0).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(125,152,137,0.55)">${firstLabel}</text>
+  <text x="${px(n - 1).toFixed(1)}" y="${H - 3}" text-anchor="middle" font-size="8" fill="rgba(125,152,137,0.55)">${lastLabel}</text>
 </svg>`;
 }
 

@@ -4,109 +4,152 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FARMILY 작물 맵</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+KR:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="app-shell">
-      <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
-      <aside class="sidebar">
-        <!-- 작물 검출 현황 -->
-        <section class="panel panel-crop" id="cropPanel">
-          <div class="panel-head">
-            <h2>작물 검출 현황</h2>
-            <span class="demo-badge">DEMO</span>
-          </div>
-          <div class="crop-session-label" id="cropSessionLabel">세션 검출량 (-)</div>
-          <div class="crop-stats" id="cropStats"></div>
-          <div class="crop-chart-wrap">
-            <div class="crop-chart-title">최근 30일 추이</div>
-            <div id="cropChart" class="crop-chart"></div>
-            <div class="crop-chart-legend" id="cropChartLegend"></div>
-          </div>
-        </section>
 
-        <div class="sidebar-report">
-          <button id="reportButton" type="button" class="report-btn">리포트</button>
+      <!-- ── TopBar ─────────────────────────────────────────────────────── -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="topbar-logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+              <rect width="22" height="22" rx="6" fill="url(#tbar-lg)"/>
+              <defs>
+                <linearGradient id="tbar-lg" x1="0" y1="0" x2="22" y2="22">
+                  <stop stop-color="#2a9a45"/>
+                  <stop offset="1" stop-color="#45d46a"/>
+                </linearGradient>
+              </defs>
+              <path d="M6 15L10 8L14 12L16 9" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="16" cy="9" r="1.5" fill="white"/>
+            </svg>
+            <span class="topbar-brand">FARMILY</span>
+          </div>
+          <div class="topbar-divider"></div>
+          <nav class="topbar-nav" id="topbarNav">
+            <button class="topbar-tab is-active" data-nav="crop" type="button">작물 탭</button>
+            <button class="topbar-tab" data-nav="analysis" type="button">분석</button>
+            <button class="topbar-tab" data-nav="report" type="button">리포트</button>
+            <button class="topbar-tab" data-nav="settings" type="button">설정</button>
+          </nav>
         </div>
+        <div class="topbar-right">
+          <span class="topbar-url">lab.farmily.ai:8090</span>
+          <div class="topbar-avatar" aria-label="사용자">F</div>
+        </div>
+      </header>
 
-        <!-- 세션 선택 -->
-        <section class="panel panel-session">
-          <div class="panel-head">
-            <h2>Sessions</h2>
-            <span class="session-status" id="datasetSummary">로딩 중…</span>
+      <!-- ── Content area ───────────────────────────────────────────────── -->
+      <div class="content-area">
+
+        <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
+        <aside class="sidebar">
+          <!-- 작물 검출 현황 -->
+          <section class="panel panel-crop" id="cropPanel">
+            <div class="panel-head">
+              <h2>작물 검출 현황</h2>
+              <span class="ai-badge">AI 분석</span>
+            </div>
+            <div class="crop-session-label" id="cropSessionLabel">세션 검출량 (-)</div>
+            <div class="crop-stats" id="cropStats"></div>
+            <div class="crop-chart-wrap">
+              <div class="crop-chart-title">최근 30일 추이</div>
+              <div id="cropChart" class="crop-chart"></div>
+              <div class="crop-chart-legend" id="cropChartLegend"></div>
+            </div>
+          </section>
+
+          <div class="sidebar-report">
+            <button id="reportButton" type="button" class="report-btn">리포트 생성</button>
           </div>
-          <div id="deviceTabs"></div>
-          <div class="session-list" id="sessionList"></div>
-        </section>
 
-        <!-- 알림 패널 -->
-        <section class="panel panel-alerts" id="alertsPanel" hidden>
-          <div class="panel-head">
-            <h2>Alerts</h2>
-            <span class="pill" id="alertCountPill">0</span>
-          </div>
-          <div class="alert-list" id="alertList"></div>
-        </section>
+          <!-- 세션 선택 -->
+          <section class="panel panel-session">
+            <div class="panel-head">
+              <h2>Sessions</h2>
+              <span class="session-status" id="datasetSummary">로딩 중…</span>
+            </div>
+            <div id="deviceTabs"></div>
+            <div class="session-list" id="sessionList"></div>
+          </section>
 
-      </aside>
+          <!-- 알림 패널 -->
+          <section class="panel panel-alerts" id="alertsPanel" hidden>
+            <div class="panel-head">
+              <h2>Alerts</h2>
+              <span class="pill" id="alertCountPill">0</span>
+            </div>
+            <div class="alert-list" id="alertList"></div>
+          </section>
 
-      <!-- ── 맵 스테이지 ────────────────────────────────────────────────── -->
-      <main class="map-stage">
-        <section class="map-card">
-          <div id="mapViewport" class="map-viewport">
-            <div id="tilePane" class="tile-pane"></div>
-            <div id="detailPane" class="detail-pane"></div>
-            <div id="annotationPane" class="annotation-pane"></div>
-            <div id="markerPane" class="marker-pane"></div>
-            <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
-            <div id="segmentTooltip" class="segment-tooltip" hidden></div>
-            <div class="hud">
-              <div class="hud-card">
-                <span class="hud-label">Zoom</span>
-                <strong id="zoomValue">-</strong>
+        </aside>
+
+        <!-- ── 맵 스테이지 ────────────────────────────────────────────────── -->
+        <main class="map-stage">
+          <section class="map-card">
+            <div id="mapViewport" class="map-viewport">
+              <div id="tilePane" class="tile-pane"></div>
+              <div id="detailPane" class="detail-pane"></div>
+              <div id="annotationPane" class="annotation-pane"></div>
+              <div id="markerPane" class="marker-pane"></div>
+              <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+              <div id="segmentTooltip" class="segment-tooltip" hidden></div>
+              <div class="hud">
+                <div class="hud-card">
+                  <span class="hud-label">Zoom</span>
+                  <strong id="zoomValue">-</strong>
+                </div>
+                <div class="hud-card">
+                  <span class="hud-label">Scale</span>
+                  <strong id="scaleValue">-</strong>
+                </div>
               </div>
-              <div class="hud-card">
-                <span class="hud-label">Scale</span>
-                <strong id="scaleValue">-</strong>
+              <div class="map-tip">
+                휠로 확대/축소 · 드래그로 이동 · 클릭으로 프레임/구간 확인
               </div>
             </div>
-            <div class="map-tip">
-              휠로 확대/축소 · 드래그로 이동 · 클릭으로 프레임/구간 확인
-            </div>
-          </div>
-        </section>
-      </main>
+          </section>
+        </main>
 
-      <!-- ── 우측 패널: 레이어 + 오늘 할 일 ──────────────────────────── -->
-      <aside class="right-panel">
-        <section class="panel panel-layers" id="layersPanel" hidden>
-          <div class="panel-head">
-            <h2>맵 오버레이 레이어</h2>
-            <span class="demo-badge">DEMO</span>
-          </div>
-          <div class="layers-list" id="layersList"></div>
-          <div class="layer-legend" id="layerLegend"></div>
-          <div class="layer-summary" id="layerSummary" hidden></div>
-          <div id="segmentDetail" class="segment-detail" hidden></div>
-        </section>
-
-        <section class="panel panel-tasks" id="tasksPanel" hidden>
-          <div class="panel-head">
-            <h2>오늘 할 일</h2>
-            <div class="panel-head-right">
-              <span class="demo-badge">DEMO</span>
-              <span class="pill" id="taskCountPill">0</span>
+        <!-- ── 우측 패널: 레이어 + 오늘 할 일 ──────────────────────────── -->
+        <aside class="right-panel">
+          <section class="panel panel-layers" id="layersPanel" hidden>
+            <div class="panel-head">
+              <h2>맵 오버레이 레이어</h2>
+              <span class="ai-badge">AI 분석</span>
             </div>
-          </div>
-          <div class="task-filter-row" id="taskFilterRow">
-            <button class="task-filter-btn is-active" data-filter="active" type="button">미완료</button>
-            <button class="task-filter-btn" data-filter="all" type="button">전체</button>
-            <button class="task-filter-btn" data-filter="done" type="button">완료</button>
-          </div>
-          <div class="task-list" id="taskList"></div>
-        </section>
-      </aside>
-    </div>
+            <div class="layers-list" id="layersList"></div>
+            <div class="layer-legend" id="layerLegend"></div>
+            <div class="layer-summary" id="layerSummary" hidden></div>
+            <div id="segmentDetail" class="segment-detail" hidden></div>
+          </section>
+
+          <section class="panel panel-tasks" id="tasksPanel" hidden>
+            <div class="panel-head">
+              <h2>오늘 할 일</h2>
+              <div class="panel-head-right">
+                <div class="live-badge">
+                  <div class="live-dot"></div>
+                  <span>LIVE</span>
+                </div>
+                <span class="pill" id="taskCountPill">0</span>
+              </div>
+            </div>
+            <div class="task-filter-row" id="taskFilterRow">
+              <button class="task-filter-btn is-active" data-filter="active" type="button">미완료</button>
+              <button class="task-filter-btn" data-filter="all" type="button">전체</button>
+              <button class="task-filter-btn" data-filter="done" type="button">완료</button>
+            </div>
+            <div class="task-list" id="taskList"></div>
+          </section>
+        </aside>
+
+      </div><!-- /.content-area -->
+    </div><!-- /.app-shell -->
 
     <!-- 리포트 모달 -->
     <div id="reportModal" class="report-modal" hidden>
@@ -124,5 +167,15 @@
     </div>
 
     <script type="module" src="/app.js"></script>
+
+    <script>
+      // TopBar nav tab interaction
+      document.getElementById('topbarNav')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.topbar-tab');
+        if (!btn) return;
+        document.querySelectorAll('.topbar-tab').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+      });
+    </script>
   </body>
 </html>
