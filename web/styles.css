@@ -251,6 +251,34 @@ button {
   margin-bottom: 12px;
 }
 
+.panel-head-toggle {
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0;
+}
+
+.panel-collapse-btn {
+  background: none;
+  border: none;
+  color: var(--t3);
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.panel-collapse-btn:hover { color: var(--t1); }
+
+.panel-body { /* wraps collapsible crop content */ }
+
+.panel-empty {
+  font-size: 11px;
+  color: var(--t3);
+  text-align: center;
+  padding: 12px;
+  margin: 0;
+}
+
 .panel-head-right {
   display: flex;
   align-items: center;
@@ -333,6 +361,9 @@ button {
 }
 
 /* ─── Crop detection panel ────────────────────────────────────────────────── */
+.panel-bookmarks { flex-shrink: 0; }
+.bookmark-list { display: flex; flex-direction: column; gap: 0; }
+
 .panel-crop { flex-shrink: 0; }
 
 .crop-session-label {

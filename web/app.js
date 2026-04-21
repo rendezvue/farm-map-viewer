@@ -3182,6 +3182,18 @@ async function bootstrap() {
   document.getElementById("reportBackdrop").addEventListener("click", closeReport);
   document.getElementById("printButton").addEventListener("click", () => window.print());
 
+  // Crop panel collapsible
+  const cropHead = document.getElementById("cropPanelHead");
+  const cropBody = document.getElementById("cropPanelBody");
+  const cropBtn  = document.getElementById("cropCollapseBtn");
+  if (cropHead && cropBody) {
+    cropHead.addEventListener("click", () => {
+      const open = !cropBody.hidden;
+      cropBody.hidden = open;
+      if (cropBtn) { cropBtn.textContent = open ? "▸" : "▾"; cropBtn.setAttribute("aria-expanded", String(!open)); }
+    });
+  }
+
   // Timelapse modal close
   document.getElementById("tlCloseBtn")?.addEventListener("click", closeTimelapse);
   document.getElementById("timelapseModal")?.addEventListener("click", (e) => {

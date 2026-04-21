@@ -48,34 +48,51 @@
 
         <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
         <aside class="sidebar">
-          <!-- 작물 검출 현황 -->
-          <section class="panel panel-crop" id="cropPanel">
+
+          <!-- 1. 순찰 기록 (세션 선택) -->
+          <section class="panel panel-session">
             <div class="panel-head">
-              <h2>작물 검출 현황</h2>
-              <span class="ai-badge">AI 분석</span>
+              <h2>순찰 기록</h2>
+              <span class="session-status" id="datasetSummary">로딩 중…</span>
             </div>
-            <div class="crop-session-label" id="cropSessionLabel">세션 검출량 (-)</div>
-            <div class="crop-stats" id="cropStats"></div>
-            <div class="crop-chart-wrap">
-              <div class="crop-chart-title">최근 30일 추이</div>
-              <div id="cropChart" class="crop-chart"></div>
-              <div class="crop-chart-legend" id="cropChartLegend"></div>
+            <div id="deviceTabs"></div>
+            <div class="session-list" id="sessionList"></div>
+          </section>
+
+          <!-- 2. 표시한 구간 (북마크) -->
+          <section class="panel panel-bookmarks" id="bookmarksPanel">
+            <div class="panel-head">
+              <h2>표시한 구간</h2>
+              <span class="pill" id="bookmarkCountPill">0</span>
+            </div>
+            <div class="bookmark-list" id="bookmarkList">
+              <p class="panel-empty">선택한 위치가 없습니다</p>
+            </div>
+          </section>
+
+          <!-- 3. AI 검출 현황 (collapsible) -->
+          <section class="panel panel-crop" id="cropPanel">
+            <div class="panel-head panel-head-toggle" id="cropPanelHead">
+              <h2>AI 검출 현황</h2>
+              <div class="panel-head-right">
+                <span class="ai-badge">AI 분석</span>
+                <button class="panel-collapse-btn" id="cropCollapseBtn" type="button" aria-expanded="false">▸</button>
+              </div>
+            </div>
+            <div class="panel-body" id="cropPanelBody" hidden>
+              <div class="crop-session-label" id="cropSessionLabel">세션 검출량 (-)</div>
+              <div class="crop-stats" id="cropStats"></div>
+              <div class="crop-chart-wrap">
+                <div class="crop-chart-title">최근 30일 추이</div>
+                <div id="cropChart" class="crop-chart"></div>
+                <div class="crop-chart-legend" id="cropChartLegend"></div>
+              </div>
             </div>
           </section>
 
           <div class="sidebar-report">
             <button id="reportButton" type="button" class="report-btn">리포트 생성</button>
           </div>
-
-          <!-- 세션 선택 -->
-          <section class="panel panel-session">
-            <div class="panel-head">
-              <h2>Sessions</h2>
-              <span class="session-status" id="datasetSummary">로딩 중…</span>
-            </div>
-            <div id="deviceTabs"></div>
-            <div class="session-list" id="sessionList"></div>
-          </section>
 
           <!-- 알림 패널 -->
           <section class="panel panel-alerts" id="alertsPanel" hidden>
