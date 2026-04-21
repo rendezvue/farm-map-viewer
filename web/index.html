@@ -115,8 +115,24 @@
           </section>
         </main>
 
-        <!-- ── 우측 패널: 레이어 + 오늘 할 일 ──────────────────────────── -->
+        <!-- ── 우측 패널: 선택 + 레이어 + 오늘 할 일 ─────────────────── -->
         <aside class="right-panel">
+
+          <!-- 선택 프레임 패널 -->
+          <section class="panel panel-selection" id="selectionPanel" hidden>
+            <div class="panel-head">
+              <h2>선택 위치</h2>
+              <span class="pill" id="selectionPill">-</span>
+            </div>
+            <div class="selection-meta" id="selectionMeta"></div>
+            <img id="contactSheet" class="contact-sheet" hidden alt="contact sheet" />
+            <div class="selection-actions">
+              <button id="timelapseBtn" class="timelapse-btn" type="button">타임랩스 보기</button>
+            </div>
+            <div id="selectionInsights" class="selection-insights" hidden></div>
+            <div id="cameraGrid" class="camera-grid"></div>
+          </section>
+
           <section class="panel panel-layers" id="layersPanel" hidden>
             <div class="panel-head">
               <h2>맵 오버레이 레이어</h2>
@@ -163,6 +179,28 @@
           </div>
         </div>
         <div id="reportBody" class="report-body"></div>
+      </div>
+    </div>
+
+    <!-- 타임랩스 모달 -->
+    <div id="timelapseModal" class="tl-modal" hidden>
+      <div class="tl-modal-inner">
+        <div class="tl-header">
+          <span id="tlFrameTitle" class="tl-title">-</span>
+          <button id="tlCloseBtn" class="tl-close" type="button" aria-label="닫기">✕</button>
+        </div>
+        <div class="tl-stage">
+          <img id="tlImage" class="tl-image" src="" alt="" />
+        </div>
+        <div class="tl-footer">
+          <span id="tlDateLabel" class="tl-date">-</span>
+          <span id="tlCounter" class="tl-counter">- / -</span>
+        </div>
+        <div class="tl-controls">
+          <button id="tlPrevBtn" class="tl-btn" type="button">◀</button>
+          <button id="tlPlayBtn" class="tl-btn tl-play" type="button">▶</button>
+          <button id="tlNextBtn" class="tl-btn" type="button">▶▶</button>
+        </div>
       </div>
     </div>
 

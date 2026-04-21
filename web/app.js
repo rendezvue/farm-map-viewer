@@ -370,6 +370,11 @@ function renderCropPanel(summary = currentCropSummary) {
     </span>`;
 }
 
+// ─── Device / session store ──────────────────────────────────────────────────
+
+let allDevicesData = null;        // full /api/devices payload, set in bootstrap
+let activeDeviceName = null;      // currently selected device
+
 // ─── Insights store ───────────────────────────────────────────────────────────
 
 let currentCropSummary = null;
@@ -2005,6 +2010,11 @@ function renderSelection(frame, insights) {
   const contactSheet = document.getElementById("contactSheet");
   const cameraGrid = document.getElementById("cameraGrid");
   if (!pill || !selectionMeta || !contactSheet || !cameraGrid) return;
+
+  // Show the selection panel
+  const selPanel = document.getElementById("selectionPanel");
+  if (selPanel) selPanel.hidden = false;
+
   pill.textContent = frame.rail_name;
   selectionMeta.innerHTML = "";
   selectionMeta.appendChild(buildSelectionMeta(frame));
@@ -2026,6 +2036,98 @@ function renderSelection(frame, insights) {
     card.append(title, image);
     cameraGrid.appendChild(card);
   }
+
+  // Wire timelapse button to current frame
+  const tlBtn = document.getElementById("timelapseBtn");
+  if (tlBtn) {
+    tlBtn.onclick = () => openTimelapse(frame);
+  }
+}
+
+// ─── Timelapse ────────────────────────────────────────────────────────────────
+
+let _tlTimer = null;
+
+function sessionNameToDate(name) {
+  // "20260304_170949" → Date
+  const m = name.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return new Date(0);
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+}
+
+function formatSessionDate(name) {
+  const d = sessionNameToDate(name);
+  return d.toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function openTimelapse(frame) {
+  const modal = document.getElementById("timelapseModal");
+  if (!modal) return;
+
+  const device = allDevicesData?.find((d) => d.name === activeDeviceName);
+  if (!device || !device.sessions.length) return;
+
+  // Build slides: sorted by session date, image = contact sheet for this frame
+  const slides = device.sessions
+    .slice()
+    .sort((a, b) => sessionNameToDate(a.name) - sessionNameToDate(b.name))
+    .map((s) => ({
+      sessionName: s.name,
+      label: formatSessionDate(s.name),
+      url: `/api/devices/${device.name}/sessions/${s.name}/contact-sheet/${frame.id}.jpg`,
+    }));
+
+  let idx = slides.length - 1; // start at most recent
+  let playing = false;
+
+  const img = document.getElementById("tlImage");
+  const dateLabel = document.getElementById("tlDateLabel");
+  const counter = document.getElementById("tlCounter");
+  const playBtn = document.getElementById("tlPlayBtn");
+  const prevBtn = document.getElementById("tlPrevBtn");
+  const nextBtn = document.getElementById("tlNextBtn");
+  const titleEl = document.getElementById("tlFrameTitle");
+
+  if (titleEl) titleEl.textContent = frame.label;
+
+  function showSlide(i) {
+    idx = ((i % slides.length) + slides.length) % slides.length;
+    const slide = slides[idx];
+    img.src = slide.url;
+    img.alt = `${frame.label} — ${slide.label}`;
+    dateLabel.textContent = slide.label;
+    counter.textContent = `${idx + 1} / ${slides.length}`;
+  }
+
+  function stopPlay() {
+    playing = false;
+    if (_tlTimer) { clearInterval(_tlTimer); _tlTimer = null; }
+    if (playBtn) playBtn.textContent = "▶";
+  }
+
+  function startPlay() {
+    playing = true;
+    if (playBtn) playBtn.textContent = "⏸";
+    _tlTimer = setInterval(() => {
+      if (idx >= slides.length - 1) { stopPlay(); return; }
+      showSlide(idx + 1);
+    }, 1200);
+  }
+
+  if (prevBtn) prevBtn.onclick = () => { stopPlay(); showSlide(idx - 1); };
+  if (nextBtn) nextBtn.onclick = () => { stopPlay(); showSlide(idx + 1); };
+  if (playBtn) playBtn.onclick = () => { playing ? stopPlay() : startPlay(); };
+
+  showSlide(idx);
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeTimelapse() {
+  const modal = document.getElementById("timelapseModal");
+  if (modal) modal.hidden = true;
+  if (_tlTimer) { clearInterval(_tlTimer); _tlTimer = null; }
+  document.body.classList.remove("modal-open");
 }
 
 // ─── Report rendering ─────────────────────────────────────────────────────────
@@ -2992,6 +3094,7 @@ async function bootstrap() {
   try {
     const payload = await fetchJson("/api/devices");
     devicesData = payload.devices;
+    allDevicesData = devicesData;
   } catch (err) {
     summary.textContent = `초기화 실패: ${err instanceof Error ? err.message : String(err)}`;
     return;
@@ -3003,10 +3106,12 @@ async function bootstrap() {
   }
 
   let activeDevice = devicesData[0].name;
+  activeDeviceName = activeDevice;
   let activeSessionBtn = null;
 
   function selectDevice(deviceName) {
     activeDevice = deviceName;
+    activeDeviceName = deviceName;
     // 콤보박스 값 동기화
     const sel = document.querySelector(".device-select");
     if (sel && sel.value !== deviceName) sel.value = deviceName;
@@ -3076,6 +3181,12 @@ async function bootstrap() {
   document.getElementById("reportClose").addEventListener("click", closeReport);
   document.getElementById("reportBackdrop").addEventListener("click", closeReport);
   document.getElementById("printButton").addEventListener("click", () => window.print());
+
+  // Timelapse modal close
+  document.getElementById("tlCloseBtn")?.addEventListener("click", closeTimelapse);
+  document.getElementById("timelapseModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeTimelapse();
+  });
 
   // Selection tabs
   for (const btn of document.querySelectorAll(".sel-tab")) {

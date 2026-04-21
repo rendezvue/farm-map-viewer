@@ -2179,3 +2179,221 @@ body.modal-open { overflow: hidden; }
     flex-direction: column;
   }
 }
+
+/* ── Selection Panel ────────────────────────────────────────────────────────── */
+
+.panel-selection {
+  border-bottom: 1px solid var(--bd);
+}
+
+.selection-meta dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 8px 12px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.selection-meta dt {
+  color: var(--t3);
+  font-family: 'DM Mono', monospace;
+}
+
+.selection-meta dd {
+  color: var(--t1);
+  font-family: 'DM Mono', monospace;
+  margin: 0;
+}
+
+.contact-sheet {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-top: 1px solid var(--bd);
+  border-bottom: 1px solid var(--bd);
+}
+
+.selection-actions {
+  padding: 8px 12px;
+}
+
+.timelapse-btn {
+  width: 100%;
+  padding: 7px 12px;
+  background: var(--green);
+  color: #0b0f0d;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.timelapse-btn:hover { opacity: 0.85; }
+.timelapse-btn:active { opacity: 0.7; }
+
+.selection-insights { padding: 8px 12px; }
+
+.camera-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--bd);
+}
+
+.camera-card {
+  background: var(--s2);
+  padding: 0;
+  overflow: hidden;
+}
+
+.camera-card h3 {
+  font-size: 9px;
+  color: var(--t3);
+  font-family: 'DM Mono', monospace;
+  margin: 0;
+  padding: 3px 6px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--bd);
+}
+
+.camera-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Timelapse Modal ────────────────────────────────────────────────────────── */
+
+.tl-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 15, 13, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.tl-modal[hidden] { display: none; }
+
+.tl-modal-inner {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  width: min(540px, 96vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+}
+
+.tl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
+  background: var(--s1);
+}
+
+.tl-title {
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+  color: var(--t2);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-close {
+  background: none;
+  border: none;
+  color: var(--t2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  margin-left: 8px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.tl-close:hover { background: var(--s3); color: var(--t1); }
+
+.tl-stage {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  max-height: 65vh;
+  overflow: hidden;
+}
+
+.tl-image {
+  width: 100%;
+  height: auto;
+  max-height: 65vh;
+  object-fit: contain;
+  display: block;
+}
+
+.tl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  border-top: 1px solid var(--bd);
+  background: var(--s1);
+}
+
+.tl-date {
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+  color: var(--t1);
+}
+
+.tl-counter {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--t3);
+}
+
+.tl-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  background: var(--s2);
+  border-top: 1px solid var(--bd);
+}
+
+.tl-btn {
+  background: var(--s3);
+  border: 1px solid var(--bd);
+  color: var(--t1);
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  transition: background 0.1s;
+}
+
+.tl-btn:hover { background: var(--s3); border-color: var(--green); }
+
+.tl-play {
+  background: var(--green);
+  color: #0b0f0d;
+  border-color: var(--green);
+  font-weight: 700;
+  min-width: 64px;
+}
+
+.tl-play:hover { opacity: 0.85; }
+
+body.modal-open { overflow: hidden; }
