@@ -314,17 +314,38 @@ function renderCropPanel(summary = currentCropSummary) {
   const stats = document.getElementById("cropStats");
   const chart = document.getElementById("cropChart");
   const legend = document.getElementById("cropChartLegend");
+  const overview = document.getElementById("cropOverview");
   const sessionLabel = document.getElementById("cropSessionLabel");
   if (!panel || !stats || !chart || !legend || !sessionLabel) return;
 
   const cropState = getCropPanelState(summary);
   const seriesData = buildCropSeriesData(cropState);
   const totalCount = cropState.counts.total;
+  const pestCount = cropState.counts.pest;
   const title = document.querySelector("#cropPanel .crop-chart-title");
   if (title) title.textContent = `최근 30일 통합 추이 · 총 ${formatCount(totalCount)}개`;
   sessionLabel.textContent = `세션 검출량 (${cropState.session})`;
 
   panel.hidden = false;
+  if (overview) {
+    const shareTotal = Math.max(1, seriesData.reduce((sum, series) => sum + series.value, 0));
+    overview.innerHTML = `
+      <div class="crop-total-card">
+        <span class="crop-overview-label">Total detections</span>
+        <strong class="crop-overview-value">${formatCount(totalCount)}</strong>
+      </div>
+      <div class="crop-risk-card">
+        <span class="crop-overview-label">Pest signals</span>
+        <strong class="crop-overview-value">${formatCount(pestCount)}</strong>
+      </div>
+      <div class="crop-share-bar" aria-label="작물 검출 비율">
+        ${seriesData.map((series) => `
+          <span class="crop-share-segment" title="${series.label} ${formatCount(series.value)}개" style="width:${Math.max(2, (series.value / shareTotal) * 100).toFixed(2)}%;background:${series.color}"></span>
+        `).join("")}
+      </div>
+    `;
+  }
+  renderMapCropLegend(seriesData);
   stats.innerHTML = "";
   for (const series of seriesData) {
     const card = document.createElement("div");
@@ -368,6 +389,17 @@ function renderCropPanel(summary = currentCropSummary) {
       <span class="crop-legend-dot is-total"></span>
       전체 작물 증감률 ${formatCropDelta(cropState.deltaPct.total)}
     </span>`;
+}
+
+function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState())) {
+  const legend = document.getElementById("mapCropLegend");
+  if (!legend) return;
+  legend.innerHTML = seriesData.map((series) => `
+    <span class="map-legend-item">
+      <span class="map-legend-dot" style="background:${series.color}"></span>
+      ${series.label}
+    </span>
+  `).join("");
 }
 
 // ─── Device / session store ──────────────────────────────────────────────────
@@ -2014,6 +2046,7 @@ function renderSelection(frame, insights) {
   // Show the selection panel
   const selPanel = document.getElementById("selectionPanel");
   if (selPanel) selPanel.hidden = false;
+  setRightPanelMode("selection");
 
   pill.textContent = frame.rail_name;
   selectionMeta.innerHTML = "";
@@ -2774,6 +2807,7 @@ function showRailTrend(railName) {
 // ─── Task panel rendering ─────────────────────────────────────────────────────
 
 const TASK_PRIORITY_ICONS = { high: "!", medium: "~", low: "·" };
+const TASK_PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
 const TASK_TYPE_LABELS = {
   disease_check: "병충해",
   growth_check: "생육",
@@ -2785,6 +2819,59 @@ const TASK_TYPE_LABELS = {
 
 function getTaskEffectiveStatus(task) {
   return taskStatusOverrides[task.id] ?? task.status;
+}
+
+function formatFieldArea(task) {
+  if (!task) return "-";
+  const railNumber = String(task.rail_name || "").match(/\d+/)?.[0];
+  const bedName = railNumber ? `${Number(railNumber)}번 베드` : (task.rail_name || "선택 구역");
+  const start = Number.isFinite(Number(task.start_m)) ? Number(task.start_m).toFixed(1) : "-";
+  const end = Number.isFinite(Number(task.end_m)) ? Number(task.end_m).toFixed(1) : "-";
+  return `${bedName} · ${start}-${end}m`;
+}
+
+function sortTasksByUrgency(tasks) {
+  return [...tasks].sort((a, b) => {
+    const pri = (TASK_PRIORITY_RANK[a.priority] ?? 9) - (TASK_PRIORITY_RANK[b.priority] ?? 9);
+    if (pri !== 0) return pri;
+    return String(a.due_label || "").localeCompare(String(b.due_label || ""));
+  });
+}
+
+function renderTaskMission(tasksData, map) {
+  const mission = document.getElementById("taskMission");
+  if (!mission) return;
+  const tasks = tasksData?.tasks || [];
+  const open = tasks.filter((t) => getTaskEffectiveStatus(t) !== "done");
+  const high = open.filter((t) => t.priority === "high");
+  const harvest = open.filter((t) => t.task_type === "harvest");
+  const reshot = open.filter((t) => t.task_type === "reshot" || t.task_type === "camera_check");
+  const first = sortTasksByUrgency(open)[0];
+
+  if (!open.length) {
+    mission.innerHTML = `
+      <div class="mission-empty">
+        <strong>오늘 남은 조치가 없습니다</strong>
+        <span>새 세션이 들어오면 우선순위를 다시 계산합니다.</span>
+      </div>
+    `;
+    return;
+  }
+
+  mission.innerHTML = `
+    <div class="mission-hero">
+      <span class="mission-kicker">먼저 확인할 곳</span>
+      <strong>${formatFieldArea(first)}</strong>
+      <span>${first.title}</span>
+      <button class="mission-focus-btn" type="button">지도에서 보기</button>
+    </div>
+    <div class="mission-stats">
+      <div class="mission-stat is-hot"><strong>${high.length}</strong><span>긴급</span></div>
+      <div class="mission-stat is-harvest"><strong>${harvest.length}</strong><span>수확</span></div>
+      <div class="mission-stat"><strong>${reshot.length}</strong><span>재확인</span></div>
+    </div>
+  `;
+  mission.querySelector(".mission-focus-btn")?.addEventListener("click", () => focusTaskOnMap(first, map));
 }
 
 function renderTaskPanel(tasksData, map) {
@@ -2799,6 +2886,7 @@ function renderTaskPanel(tasksData, map) {
 
   const openCount = tasksData.tasks.filter((t) => getTaskEffectiveStatus(t) !== "done").length;
   pill.textContent = String(openCount);
+  renderTaskMission(tasksData, map);
 
   _renderTaskList(tasksData.tasks, list, map);
 
@@ -2815,12 +2903,12 @@ function renderTaskPanel(tasksData, map) {
 
 function _renderTaskList(tasks, listEl, map) {
   listEl.innerHTML = "";
-  const filtered = tasks.filter((t) => {
+  const filtered = sortTasksByUrgency(tasks.filter((t) => {
     const eff = getTaskEffectiveStatus(t);
     if (taskFilter === "active") return eff !== "done";
     if (taskFilter === "done") return eff === "done";
     return true;
-  });
+  }));
 
   if (filtered.length === 0) {
     const empty = createElement("div", "task-empty");
@@ -2829,10 +2917,11 @@ function _renderTaskList(tasks, listEl, map) {
     return;
   }
 
-  for (const task of filtered) {
+  filtered.forEach((task, index) => {
     const eff = getTaskEffectiveStatus(task);
     const item = document.createElement("div");
-    item.className = `task-item task-${task.priority} task-status-${eff}`;
+    item.className = `task-item task-${task.priority} task-status-${eff}${index === 0 && eff !== "done" ? " is-next" : ""}`;
+    item.addEventListener("click", () => focusTaskOnMap(task, map));
 
     const header = document.createElement("div");
     header.className = "task-item-header";
@@ -2844,7 +2933,10 @@ function _renderTaskList(tasks, listEl, map) {
     titleBtn.className = "task-title-btn";
     titleBtn.type = "button";
     titleBtn.textContent = task.title;
-    titleBtn.addEventListener("click", () => focusTaskOnMap(task, map));
+    titleBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      focusTaskOnMap(task, map);
+    });
 
     const doneToggle = document.createElement("button");
     doneToggle.className = `task-done-toggle ${eff === "done" ? "is-done" : ""}`;
@@ -2867,7 +2959,7 @@ function _renderTaskList(tasks, listEl, map) {
 
     const meta = document.createElement("div");
     meta.className = "task-item-meta";
-    meta.innerHTML = `<span class="task-rail">${task.rail_name}</span>
+    meta.innerHTML = `<span class="task-rail">${formatFieldArea(task)}</span>
       <span class="task-range">${task.start_m.toFixed(1)}–${task.end_m.toFixed(1)}m</span>
       <span class="task-due task-due-${task.priority}">${task.due_label}</span>`;
     item.appendChild(meta);
@@ -2883,7 +2975,7 @@ function _renderTaskList(tasks, listEl, map) {
     }
 
     listEl.appendChild(item);
-  }
+  });
 }
 
 function focusTaskOnMap(task, map) {
@@ -2897,6 +2989,7 @@ function focusTaskOnMap(task, map) {
   if (frame) {
     map.focusFrame(frame);
     renderSelection(frame, currentInsightsData);
+    setRightPanelMode("tasks");
   }
   // Activate relevant layer on map
   if (task.layer_id && currentLayersData) {
@@ -2917,6 +3010,37 @@ let currentMap = null;
 let currentSessionLoadToken = 0;
 let currentInsightsData = null;
 let currentLayersData = null;
+
+function setRightPanelMode(mode) {
+  const panel = document.getElementById("rightPanel");
+  if (!panel) return;
+  panel.dataset.activePanel = mode;
+  for (const tab of document.querySelectorAll(".inspector-tab")) {
+    tab.classList.toggle("is-active", tab.dataset.panel === mode);
+  }
+}
+
+function initInspectorTabs() {
+  for (const tab of document.querySelectorAll(".inspector-tab")) {
+    tab.addEventListener("click", () => setRightPanelMode(tab.dataset.panel || "layers"));
+  }
+}
+
+function initMapControls() {
+  const centerAnchor = () => ({
+    x: currentMap?.viewportWidth ? currentMap.viewportWidth / 2 : 0,
+    y: currentMap?.viewportHeight ? currentMap.viewportHeight / 2 : 0,
+  });
+  const stack = document.querySelector(".map-control-stack");
+  if (stack) {
+    for (const eventName of ["pointerdown", "pointerup", "pointermove", "dblclick", "wheel"]) {
+      stack.addEventListener(eventName, (event) => event.stopPropagation(), { passive: eventName !== "wheel" });
+    }
+  }
+  document.getElementById("mapZoomIn")?.addEventListener("click", () => currentMap?.zoomBy(0.45, centerAnchor()));
+  document.getElementById("mapZoomOut")?.addEventListener("click", () => currentMap?.zoomBy(-0.45, centerAnchor()));
+  document.getElementById("mapFit")?.addEventListener("click", () => currentMap?.fitToBounds());
+}
 
 async function loadSession(deviceName, sessionName, loadToken = currentSessionLoadToken) {
   const manifest = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/manifest`);
@@ -2993,6 +3117,11 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 
   document.getElementById("datasetSummary").textContent =
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
+  const mapSessionChip = document.getElementById("mapSessionChip");
+  if (mapSessionChip) {
+    mapSessionChip.textContent =
+      `${deviceName}/${sessionName} · ${manifest.summary.rail_count} rails · ${manifest.summary.frame_count.toLocaleString()} frames`;
+  }
   renderCropPanel(currentCropSummary);
 
   if (currentMap) {
@@ -3043,6 +3172,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     map.selectedFrameId = frames[0].id;
     map.queueRender();
     renderSelection(frames[0], insights);
+    setRightPanelMode("tasks");
   }
 
   return map;
@@ -3089,6 +3219,8 @@ function renderSessionList(sessions, activeDevice, onSelect) {
 async function bootstrap() {
   const summary = document.getElementById("datasetSummary");
   renderCropPanel();
+  initInspectorTabs();
+  initMapControls();
 
   let devicesData;
   try {

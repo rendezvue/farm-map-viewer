@@ -49,38 +49,18 @@
         <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
         <aside class="sidebar">
 
-          <!-- 1. 순찰 기록 (세션 선택) -->
-          <section class="panel panel-session">
-            <div class="panel-head">
-              <h2>순찰 기록</h2>
-              <span class="session-status" id="datasetSummary">로딩 중…</span>
-            </div>
-            <div id="deviceTabs"></div>
-            <div class="session-list" id="sessionList"></div>
-          </section>
-
-          <!-- 2. 표시한 구간 (북마크) -->
-          <section class="panel panel-bookmarks" id="bookmarksPanel">
-            <div class="panel-head">
-              <h2>표시한 구간</h2>
-              <span class="pill" id="bookmarkCountPill">0</span>
-            </div>
-            <div class="bookmark-list" id="bookmarkList">
-              <p class="panel-empty">선택한 위치가 없습니다</p>
-            </div>
-          </section>
-
-          <!-- 3. AI 검출 현황 (collapsible) -->
-          <section class="panel panel-crop" id="cropPanel">
+          <!-- 1. AI 검출 현황 -->
+          <section class="panel panel-crop panel-primary" id="cropPanel">
             <div class="panel-head panel-head-toggle" id="cropPanelHead">
               <h2>AI 검출 현황</h2>
               <div class="panel-head-right">
                 <span class="ai-badge">AI 분석</span>
-                <button class="panel-collapse-btn" id="cropCollapseBtn" type="button" aria-expanded="false">▸</button>
+                <button class="panel-collapse-btn" id="cropCollapseBtn" type="button" aria-expanded="true">▾</button>
               </div>
             </div>
-            <div class="panel-body" id="cropPanelBody" hidden>
+            <div class="panel-body" id="cropPanelBody">
               <div class="crop-session-label" id="cropSessionLabel">세션 검출량 (-)</div>
+              <div class="crop-overview" id="cropOverview"></div>
               <div class="crop-stats" id="cropStats"></div>
               <div class="crop-chart-wrap">
                 <div class="crop-chart-title">최근 30일 추이</div>
@@ -90,9 +70,30 @@
             </div>
           </section>
 
+          <!-- 2. 순찰 기록 (세션 선택) -->
+          <section class="panel panel-session">
+            <div class="panel-head">
+              <h2>순찰 기록</h2>
+              <span class="session-status" id="datasetSummary">로딩 중…</span>
+            </div>
+            <div id="deviceTabs"></div>
+            <div class="session-list" id="sessionList"></div>
+          </section>
+
           <div class="sidebar-report">
             <button id="reportButton" type="button" class="report-btn">리포트 생성</button>
           </div>
+
+          <!-- 3. 표시한 구간 (북마크) -->
+          <section class="panel panel-bookmarks" id="bookmarksPanel">
+            <div class="panel-head">
+              <h2>표시한 구간</h2>
+              <span class="pill" id="bookmarkCountPill">0</span>
+            </div>
+            <div class="bookmark-list" id="bookmarkList">
+              <p class="panel-empty">선택한 위치가 없습니다</p>
+            </div>
+          </section>
 
           <!-- 알림 패널 -->
           <section class="panel panel-alerts" id="alertsPanel" hidden>
@@ -115,6 +116,15 @@
               <div id="markerPane" class="marker-pane"></div>
               <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
               <div id="segmentTooltip" class="segment-tooltip" hidden></div>
+              <div class="map-topline">
+                <div class="map-session-chip" id="mapSessionChip">세션 로딩 중</div>
+                <div class="map-crop-legend" id="mapCropLegend"></div>
+              </div>
+              <div class="map-control-stack" aria-label="지도 컨트롤">
+                <button id="mapZoomIn" class="map-icon-btn" type="button" aria-label="확대">+</button>
+                <button id="mapZoomOut" class="map-icon-btn" type="button" aria-label="축소">−</button>
+                <button id="mapFit" class="map-icon-btn map-fit-btn" type="button" aria-label="전체 보기">□</button>
+              </div>
               <div class="hud">
                 <div class="hud-card">
                   <span class="hud-label">Zoom</span>
@@ -125,15 +135,17 @@
                   <strong id="scaleValue">-</strong>
                 </div>
               </div>
-              <div class="map-tip">
-                휠로 확대/축소 · 드래그로 이동 · 클릭으로 프레임/구간 확인
-              </div>
             </div>
           </section>
         </main>
 
         <!-- ── 우측 패널: 선택 + 레이어 + 오늘 할 일 ─────────────────── -->
-        <aside class="right-panel">
+        <aside class="right-panel" id="rightPanel" data-active-panel="tasks">
+          <div class="inspector-tabs" id="inspectorTabs">
+            <button class="inspector-tab" data-panel="selection" type="button">선택</button>
+            <button class="inspector-tab" data-panel="layers" type="button">레이어</button>
+            <button class="inspector-tab is-active" data-panel="tasks" type="button">작업</button>
+          </div>
 
           <!-- 선택 프레임 패널 -->
           <section class="panel panel-selection" id="selectionPanel" hidden>
@@ -163,7 +175,7 @@
 
           <section class="panel panel-tasks" id="tasksPanel" hidden>
             <div class="panel-head">
-              <h2>오늘 할 일</h2>
+              <h2>오늘의 추천 조치</h2>
               <div class="panel-head-right">
                 <div class="live-badge">
                   <div class="live-dot"></div>
@@ -172,6 +184,7 @@
                 <span class="pill" id="taskCountPill">0</span>
               </div>
             </div>
+            <div class="task-mission" id="taskMission"></div>
             <div class="task-filter-row" id="taskFilterRow">
               <button class="task-filter-btn is-active" data-filter="active" type="button">미완료</button>
               <button class="task-filter-btn" data-filter="all" type="button">전체</button>
