@@ -1421,7 +1421,7 @@ class TileMap {
     this.drawOverlay();
     this.onViewChange({
       zoom: this.currentZoom,
-      screenPxPerMeter: this.scaleY * this.manifest.layout.px_per_meter_y,
+      screenPxPerMeter: this.scaleX * this.manifest.layout.px_per_meter_x,
     });
 
     if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
@@ -1489,42 +1489,42 @@ class TileMap {
     // ── Rail separators + risk highlight ──────────────────────────────────────
     for (const rail of rails) {
       const ri = this._getRailInsight(rail.name);
-      const x = this.manifest.layout.margin_x + rail.rail_y_m * this.manifest.layout.px_per_meter_x + this.manifest.layout.cell_width / 2;
-      const screen = this.worldToScreen(x, this.centerY);
-      if (screen.x < -80 || screen.x > width + 80) continue;
+      const y = this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y + this.manifest.layout.cell_height / 2;
+      const screen = this.worldToScreen(this.centerX, y);
+      if (screen.y < -80 || screen.y > height + 80) continue;
 
       if (showRiskOverlay && ri) {
         const priority = ri.priority_score || 0;
         if (priority >= 40) {
           ctx.fillStyle = `rgba(220, 60, 40, ${Math.min(0.18, priority / 300)})`;
-          const railScreenLeft = this.worldToScreen(
-            this.manifest.layout.margin_x + rail.rail_y_m * this.manifest.layout.px_per_meter_x,
+          const railScreenTop = this.worldToScreen(
             0,
-          ).x;
-          const railScreenRight = this.worldToScreen(
-            this.manifest.layout.margin_x + rail.rail_y_m * this.manifest.layout.px_per_meter_x + this.manifest.layout.cell_width,
+            this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y,
+          ).y;
+          const railScreenBottom = this.worldToScreen(
             0,
-          ).x;
-          ctx.fillRect(railScreenLeft, 0, railScreenRight - railScreenLeft, height);
+            this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y + this.manifest.layout.cell_height,
+          ).y;
+          ctx.fillRect(0, railScreenTop, width, railScreenBottom - railScreenTop);
         } else if (priority >= 20) {
           ctx.fillStyle = `rgba(220, 140, 40, ${Math.min(0.12, priority / 300)})`;
-          const railScreenLeft = this.worldToScreen(
-            this.manifest.layout.margin_x + rail.rail_y_m * this.manifest.layout.px_per_meter_x,
+          const railScreenTop = this.worldToScreen(
             0,
-          ).x;
-          const railScreenRight = this.worldToScreen(
-            this.manifest.layout.margin_x + rail.rail_y_m * this.manifest.layout.px_per_meter_x + this.manifest.layout.cell_width,
+            this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y,
+          ).y;
+          const railScreenBottom = this.worldToScreen(
             0,
-          ).x;
-          ctx.fillRect(railScreenLeft, 0, railScreenRight - railScreenLeft, height);
+            this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y + this.manifest.layout.cell_height,
+          ).y;
+          ctx.fillRect(0, railScreenTop, width, railScreenBottom - railScreenTop);
         }
       }
 
       ctx.strokeStyle = "rgba(20, 63, 49, 0.18)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(screen.x, 0);
-      ctx.lineTo(screen.x, height);
+      ctx.moveTo(0, screen.y);
+      ctx.lineTo(width, screen.y);
       ctx.stroke();
       // Rail name pill — always visible regardless of zoom
       const railLabel = rail.name.replace("rail_", "R");
@@ -1533,13 +1533,13 @@ class TileMap {
       ctx.textBaseline = "middle";
       const rlW = ctx.measureText(railLabel).width + 12;
       const rlH = 17;
-      const rlX = clamp(screen.x, rlW / 2 + 4, width - rlW / 2 - 4);
+      const rlY = clamp(screen.y, rlH / 2 + 4, height - rlH / 2 - 4);
       ctx.fillStyle = "rgba(11, 15, 13, 0.88)";
       ctx.beginPath();
-      ctx.roundRect(rlX - rlW / 2, 5, rlW, rlH, 4);
+      ctx.roundRect(6, rlY - rlH / 2, rlW, rlH, 4);
       ctx.fill();
       ctx.fillStyle = "#45d46a";
-      ctx.fillText(railLabel, rlX, 5 + rlH / 2);
+      ctx.fillText(railLabel, 6 + rlW / 2, rlY);
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
     }
@@ -1569,33 +1569,33 @@ class TileMap {
     }
 
     // ── Meter ruler ───────────────────────────────────────────────────────────
-    const screenPxPerMeter = this.scaleY * this.manifest.layout.px_per_meter_y;
+    const screenPxPerMeter = this.scaleX * this.manifest.layout.px_per_meter_x;
     const tickStep = chooseTickStep(screenPxPerMeter);
     const firstMeter = Math.floor(this.manifest.world.odom_x_min / tickStep) * tickStep;
     const lastMeter = this.manifest.world.odom_x_max + tickStep;
     ctx.strokeStyle = "rgba(39, 48, 41, 0.4)";
     ctx.lineWidth = 1;
     ctx.font = 'bold 11px "DM Mono", monospace';
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (let meter = firstMeter; meter <= lastMeter; meter += tickStep) {
-      const worldY = this.manifest.layout.margin_y + (meter - this.manifest.world.odom_x_min) * this.manifest.layout.px_per_meter_y;
-      const screen = this.worldToScreen(this.centerX, worldY);
-      if (screen.y < -40 || screen.y > height + 40) continue;
+      const worldX = this.manifest.layout.margin_x + (meter - this.manifest.world.odom_x_min) * this.manifest.layout.px_per_meter_x;
+      const screen = this.worldToScreen(worldX, this.centerY);
+      if (screen.x < -40 || screen.x > width + 40) continue;
       ctx.beginPath();
-      ctx.moveTo(0, screen.y);
-      ctx.lineTo(width, screen.y);
+      ctx.moveTo(screen.x, 0);
+      ctx.lineTo(screen.x, height);
       ctx.stroke();
       const mLabel = `${meter.toFixed(1)}m`;
       const mW = ctx.measureText(mLabel).width + 10;
       const mH = 16;
-      const mY = screen.y - mH / 2;
+      const mX = clamp(screen.x, mW / 2 + 4, width - mW / 2 - 4);
       ctx.fillStyle = "rgba(11, 15, 13, 0.85)";
       ctx.beginPath();
-      ctx.roundRect(6, mY, mW, mH, 3);
+      ctx.roundRect(mX - mW / 2, 6, mW, mH, 3);
       ctx.fill();
       ctx.fillStyle = "#7d9889";
-      ctx.fillText(mLabel, 11, screen.y);
+      ctx.fillText(mLabel, mX, 6 + mH / 2);
     }
     ctx.textBaseline = "alphabetic";
 
@@ -1639,16 +1639,16 @@ class TileMap {
       const rail = railMap[item.rail_name];
       if (!rail) continue;
 
-      // World-space left/right of this rail's cell column
-      const railLeft = layout.margin_x + rail.rail_y_m * layout.px_per_meter_x;
-      const railRight = railLeft + layout.cell_width;
+      // World-space top/bottom of this rail row
+      const railTop = layout.margin_y + rail.rail_y_m * layout.px_per_meter_y;
+      const railBottom = railTop + layout.cell_height;
 
-      // World-space top/bottom for this segment
-      const segTop = layout.margin_y + (item.start_m - world.odom_x_min) * layout.px_per_meter_y;
-      const segBottom = layout.margin_y + (item.end_m - world.odom_x_min) * layout.px_per_meter_y;
+      // World-space left/right for this meter segment
+      const segLeft = layout.margin_x + (item.start_m - world.odom_x_min) * layout.px_per_meter_x;
+      const segRight = layout.margin_x + (item.end_m - world.odom_x_min) * layout.px_per_meter_x;
 
-      const tl = this.worldToScreen(railLeft, segTop);
-      const br = this.worldToScreen(railRight, segBottom);
+      const tl = this.worldToScreen(segLeft, railTop);
+      const br = this.worldToScreen(segRight, railBottom);
 
       if (br.x < 0 || tl.x > width || br.y < 0 || tl.y > height) continue;
 
@@ -1714,11 +1714,11 @@ class TileMap {
     for (const item of layer.items) {
       const rail = railMap[item.rail_name];
       if (!rail) continue;
-      const railLeft = layout.margin_x + rail.rail_y_m * layout.px_per_meter_x;
-      const railRight = railLeft + layout.cell_width;
-      const segTop = layout.margin_y + (item.start_m - world.odom_x_min) * layout.px_per_meter_y;
-      const segBottom = layout.margin_y + (item.end_m - world.odom_x_min) * layout.px_per_meter_y;
-      if (worldX >= railLeft && worldX <= railRight && worldY >= segTop && worldY <= segBottom) {
+      const railTop = layout.margin_y + rail.rail_y_m * layout.px_per_meter_y;
+      const railBottom = railTop + layout.cell_height;
+      const segLeft = layout.margin_x + (item.start_m - world.odom_x_min) * layout.px_per_meter_x;
+      const segRight = layout.margin_x + (item.end_m - world.odom_x_min) * layout.px_per_meter_x;
+      if (worldX >= segLeft && worldX <= segRight && worldY >= railTop && worldY <= railBottom) {
         return item;
       }
     }

@@ -7,6 +7,7 @@ from pathlib import Path
 
 DEFAULT_DATASET = Path("/home/nas/rdv_md3/uv_camera_db/ubuntu/20260416_235959")
 DEFAULT_DB_ROOT = Path("/mnt/nas_rdv_md3/uv_camera_db")
+LAYOUT_ORIENTATION = "meter_x_rail_y"
 
 
 @dataclass(frozen=True)

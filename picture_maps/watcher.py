@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .config import BuildConfig
+from .config import BuildConfig, LAYOUT_ORIENTATION
 
 COOLDOWN_HOURS = 1
 
@@ -58,6 +58,12 @@ def _write_watcher_state(config: BuildConfig, snapshot: dict[str, Any]) -> None:
 
 def _needs_build(session_dir: Path, config: BuildConfig) -> bool:
     if not config.manifest_path.exists():
+        return True
+    try:
+        manifest = json.loads(config.manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("layout", {}).get("orientation") != LAYOUT_ORIENTATION:
+            return True
+    except Exception:
         return True
     state = _read_watcher_state(config)
     if state is None:

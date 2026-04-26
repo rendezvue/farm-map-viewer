@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 from PIL import Image, ImageColor, ImageDraw, ImageOps
 
-from .config import BuildConfig
+from .config import BuildConfig, LAYOUT_ORIENTATION
 from .dataset import CAMERA_ORDER, scan_dataset
 from .insights import build_insights
 from .layers import build_layers
@@ -198,17 +198,20 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
 
 
 def compute_layout(config: BuildConfig, dataset: dict[str, Any]) -> dict[str, Any]:
-    px_per_meter_x = (config.cell_width + config.gap_x) / config.rail_spacing_m
-    px_per_meter_y = (config.cell_height + config.gap_y) / max(dataset["step_m"], 0.1)
+    px_per_meter_x = (config.cell_width + config.gap_x) / max(dataset["step_m"], 0.1)
+    px_per_meter_y = (config.cell_height + config.gap_y) / config.rail_spacing_m
     rails = dataset["rails"]
     width_px = config.margin_x * 2
     height_px = config.margin_y * 2
+    odom_span = max(dataset["odom_x_max"] - dataset["odom_x_min"], 0.0)
+    width_px = math.ceil(odom_span * px_per_meter_x + config.cell_width + config.margin_x * 2)
     if rails:
         last_rail_y = float(rails[-1]["rail_y_m"])
-        width_px = math.ceil(last_rail_y * px_per_meter_x + config.cell_width + config.margin_x * 2)
-    odom_span = max(dataset["odom_x_max"] - dataset["odom_x_min"], 0.0)
-    height_px = math.ceil(odom_span * px_per_meter_y + config.cell_height + config.margin_y * 2)
+        height_px = math.ceil(last_rail_y * px_per_meter_y + config.cell_height + config.margin_y * 2)
     return {
+        "orientation": LAYOUT_ORIENTATION,
+        "x_axis": "odom_x_m",
+        "y_axis": "rail_number",
         "cell_width": config.cell_width,
         "cell_height": config.cell_height,
         "gap_x": config.gap_x,
@@ -223,8 +226,8 @@ def compute_layout(config: BuildConfig, dataset: dict[str, Any]) -> dict[str, An
 
 
 def frame_rect_px(frame: dict[str, Any], dataset: dict[str, Any], layout: dict[str, Any]) -> dict[str, int]:
-    left = round(layout["margin_x"] + frame["rail_y_m"] * layout["px_per_meter_x"])
-    top = round(layout["margin_y"] + (frame["odom_x"] - dataset["odom_x_min"]) * layout["px_per_meter_y"])
+    left = round(layout["margin_x"] + (frame["odom_x"] - dataset["odom_x_min"]) * layout["px_per_meter_x"])
+    top = round(layout["margin_y"] + frame["rail_y_m"] * layout["px_per_meter_y"])
     return {
         "left": left,
         "top": top,
