@@ -9,6 +9,13 @@ from typing import Any
 
 CROP_STAGE_ORDER = ("flower", "unripe", "midripe", "ripe", "pest")
 CROP_TOTAL_STAGE_ORDER = ("flower", "unripe", "midripe", "ripe")
+CROP_CLASS_TO_STAGE = {
+    0: "unripe",
+    1: "unripe",
+    2: "midripe",
+    3: "ripe",
+    4: "flower",
+}
 
 _DETECTION_CACHE_DIRS = (
     Path("/root/docker_share/videos/det_cache"),
@@ -52,6 +59,36 @@ def _counts_with_total(counts: dict[str, int], *, source: str) -> dict[str, Any]
     return {"source": source, "counts": normalized}
 
 
+def _zero_counts() -> dict[str, int]:
+    return {stage: 0 for stage in CROP_STAGE_ORDER}
+
+
+def _normalize_frames_payload(frames_payload: dict[str, Any] | list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if isinstance(frames_payload, dict):
+        frames = frames_payload.get("items", [])
+    elif isinstance(frames_payload, list):
+        frames = frames_payload
+    else:
+        frames = []
+    return sorted(
+        [frame for frame in frames if isinstance(frame, dict)],
+        key=lambda item: (
+            int(item.get("rail_column", 0) or 0),
+            float(item.get("odom_x", 0.0) or 0.0),
+            int(item.get("seq_index", 0) or 0),
+            int(item.get("id", 0) or 0),
+        ),
+    )
+
+
+def _frame_index_from_key(value: Any) -> int | None:
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return None
+    return numeric if numeric >= 0 else None
+
+
 def _load_5cls_counts(cache_path: Path, session_name: str) -> dict[str, Any] | None:
     try:
         with cache_path.open("rb") as handle:
@@ -90,6 +127,43 @@ def _load_5cls_counts(cache_path: Path, session_name: str) -> dict[str, Any] | N
     )
 
 
+def _load_5cls_rail_counts(cache_path: Path, frames_payload: dict[str, Any] | list[dict[str, Any]]) -> dict[str, dict[str, int]] | None:
+    frames_ordered = _normalize_frames_payload(frames_payload)
+    if not frames_ordered:
+        return None
+    try:
+        with cache_path.open("rb") as handle:
+            payload = pickle.load(handle)
+    except Exception:
+        return None
+
+    detections_by_frame = payload.get("frames")
+    if not isinstance(detections_by_frame, dict):
+        return None
+
+    rail_counts: dict[str, dict[str, int]] = {}
+    for frame_key, detections in detections_by_frame.items():
+        frame_index = _frame_index_from_key(frame_key)
+        if frame_index is None or frame_index >= len(frames_ordered):
+            continue
+        rail_name = str(frames_ordered[frame_index].get("rail_name") or "")
+        if not rail_name or not isinstance(detections, list):
+            continue
+        counts = rail_counts.setdefault(rail_name, _zero_counts())
+        for detection in detections:
+            if not isinstance(detection, (list, tuple)) or len(detection) < 6:
+                continue
+            try:
+                class_id = int(detection[5])
+            except (TypeError, ValueError):
+                continue
+            stage = CROP_CLASS_TO_STAGE.get(class_id)
+            if stage:
+                counts[stage] += 1
+
+    return rail_counts if rail_counts else None
+
+
 def _find_actual_counts(session_name: str) -> dict[str, Any] | None:
     for directory in _DETECTION_CACHE_DIRS:
         exact = directory / f"{session_name}_strawberry_seg_yolo11s_5cls_conf0.3_imgsz640.pkl"
@@ -102,6 +176,22 @@ def _find_actual_counts(session_name: str) -> dict[str, Any] | None:
             counts = _load_5cls_counts(candidate, session_name)
             if counts is not None:
                 return counts
+
+    return None
+
+
+def _find_actual_rail_counts(session_name: str, frames_payload: dict[str, Any] | list[dict[str, Any]]) -> tuple[dict[str, dict[str, int]], str] | None:
+    for directory in _DETECTION_CACHE_DIRS:
+        exact = directory / f"{session_name}_strawberry_seg_yolo11s_5cls_conf0.3_imgsz640.pkl"
+        if exact.exists():
+            rail_counts = _load_5cls_rail_counts(exact, frames_payload)
+            if rail_counts:
+                return rail_counts, f"det_cache:{exact.name}"
+
+        for candidate in sorted(directory.glob(f"{session_name}_*5cls*.pkl")):
+            rail_counts = _load_5cls_rail_counts(candidate, frames_payload)
+            if rail_counts:
+                return rail_counts, f"det_cache:{candidate.name}"
 
     return None
 
@@ -150,6 +240,85 @@ def _estimated_counts(session_name: str, manifest: dict[str, Any]) -> dict[str, 
     )
 
 
+def _allocate_stage_counts(total: int, rails: list[dict[str, Any]], session_name: str, stage: str) -> dict[str, int]:
+    if total <= 0 or not rails:
+        return {str(rail.get("name", "")): 0 for rail in rails}
+    weighted: list[tuple[str, float]] = []
+    for rail in rails:
+        rail_name = str(rail.get("name") or "")
+        if not rail_name:
+            continue
+        frame_count = max(1, int(rail.get("frame_count", 0) or 0))
+        variation = _seed_ratio(f"{session_name}_{rail_name}_{stage}_rail_weight", 0.72, 1.34)
+        weighted.append((rail_name, frame_count * variation))
+    weight_total = sum(weight for _, weight in weighted)
+    if weight_total <= 0:
+        equal = total // max(1, len(weighted))
+        result = {rail_name: equal for rail_name, _ in weighted}
+        for rail_name, _ in weighted[: total - equal * len(weighted)]:
+            result[rail_name] += 1
+        return result
+
+    raw_parts = [(rail_name, total * weight / weight_total) for rail_name, weight in weighted]
+    result = {rail_name: int(value) for rail_name, value in raw_parts}
+    remainder = total - sum(result.values())
+    for rail_name, _value in sorted(raw_parts, key=lambda item: item[1] - int(item[1]), reverse=True)[:remainder]:
+        result[rail_name] += 1
+    return result
+
+
+def _estimated_rail_counts(session_name: str, manifest: dict[str, Any], counts: dict[str, int]) -> tuple[dict[str, dict[str, int]], str]:
+    rails = [rail for rail in manifest.get("rails", []) if isinstance(rail, dict)]
+    rail_counts = {str(rail.get("name") or ""): _zero_counts() for rail in rails if rail.get("name")}
+    for stage in CROP_STAGE_ORDER:
+        allocated = _allocate_stage_counts(_round_count(counts.get(stage, 0)), rails, session_name, stage)
+        for rail_name, value in allocated.items():
+            if rail_name in rail_counts:
+                rail_counts[rail_name][stage] = value
+    return rail_counts, "estimated:rail_distribution"
+
+
+def build_rail_crop_payload(
+    session_name: str,
+    manifest: dict[str, Any],
+    frames_payload: dict[str, Any] | list[dict[str, Any]],
+    counts_payload: dict[str, Any],
+) -> dict[str, Any]:
+    rails = [rail for rail in manifest.get("rails", []) if isinstance(rail, dict)]
+    if not rails:
+        return {"available": False, "source": None, "stages": list(CROP_TOTAL_STAGE_ORDER), "rails": []}
+
+    actual = _find_actual_rail_counts(session_name, frames_payload)
+    if actual is not None:
+        rail_counts, source = actual
+    else:
+        rail_counts, source = _estimated_rail_counts(session_name, manifest, counts_payload.get("counts", {}))
+
+    rows: list[dict[str, Any]] = []
+    for rail in sorted(rails, key=lambda item: int(item.get("column", 0) or 0)):
+        rail_name = str(rail.get("name") or "")
+        counts = _zero_counts()
+        counts.update(rail_counts.get(rail_name, {}))
+        counts["total"] = sum(counts[stage] for stage in CROP_TOTAL_STAGE_ORDER)
+        rows.append(
+            {
+                "rail_name": rail_name,
+                "rail_number": int(rail.get("number", 0) or 0),
+                "rail_column": int(rail.get("column", 0) or 0),
+                "rail_y_m": float(rail.get("rail_y_m", 0.0) or 0.0),
+                "frame_count": int(rail.get("frame_count", 0) or 0),
+                "counts": counts,
+            }
+        )
+
+    return {
+        "available": True,
+        "source": source,
+        "stages": list(CROP_TOTAL_STAGE_ORDER),
+        "rails": rows,
+    }
+
+
 def ensure_crop_counts(session_name: str, manifest: dict[str, Any], cached: dict[str, Any] | None) -> dict[str, Any]:
     if cached is not None and isinstance(cached.get("counts"), dict):
         counts = {
@@ -178,6 +347,7 @@ def build_crop_summary_payload(
     device_name: str,
     session_name: str,
     manifest: dict[str, Any],
+    frames_payload: dict[str, Any] | list[dict[str, Any]],
     cached_counts: dict[str, Any] | None,
     sessions: dict[tuple[str, str], Any],
 ) -> dict[str, Any]:
@@ -258,6 +428,12 @@ def build_crop_summary_payload(
         "session": session_name,
         "source": selected_counts["source"],
         "counts": selected_counts["counts"],
+        "rail_crop": build_rail_crop_payload(
+            session_name=session_name,
+            manifest=manifest,
+            frames_payload=frames_payload,
+            counts_payload=selected_counts,
+        ),
         "trend_30d": {
             "points": points,
             "delta_pct": delta_pct,

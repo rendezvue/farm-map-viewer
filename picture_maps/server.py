@@ -256,6 +256,7 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 device_name=device,
                 session_name=session,
                 manifest=data.manifest,
+                frames_payload=data.frames,
                 cached_counts=data.crop_counts,
                 sessions=self.sessions,
             )

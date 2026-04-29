@@ -102,6 +102,7 @@ const CROP_PANEL_SERIES = [
     color: "#8f5f3f",
   },
 ];
+const CROP_MAP_CHART_SERIES = CROP_PANEL_SERIES.filter((series) => series.id !== "pest");
 
 function toCropCount(value) {
   const numeric = Number(value);
@@ -216,6 +217,56 @@ function buildCropSeriesData(cropState) {
     deltaPct: cropState.deltaPct[series.id] ?? 0,
     points: cropState.points.map((point) => toCropCount(point[series.id])),
   }));
+}
+
+function getRailCropRows(summary = currentCropSummary) {
+  const rows = summary?.rail_crop?.available && Array.isArray(summary.rail_crop.rails)
+    ? summary.rail_crop.rails
+    : [];
+  return rows
+    .map((row) => ({
+      rail_name: row.rail_name || "",
+      rail_number: Number(row.rail_number) || 0,
+      rail_column: Number(row.rail_column) || 0,
+      rail_y_m: Number(row.rail_y_m) || 0,
+      frame_count: toCropCount(row.frame_count),
+      counts: {
+        flower: toCropCount(row.counts?.flower),
+        unripe: toCropCount(row.counts?.unripe),
+        midripe: toCropCount(row.counts?.midripe),
+        ripe: toCropCount(row.counts?.ripe),
+      },
+    }))
+    .filter((row) => row.rail_name)
+    .sort((a, b) => a.rail_column - b.rail_column);
+}
+
+function mergeRailCropRows(rows) {
+  const counts = { flower: 0, unripe: 0, midripe: 0, ripe: 0 };
+  let frameCount = 0;
+  for (const row of rows) {
+    frameCount += row.frame_count || 0;
+    for (const series of CROP_MAP_CHART_SERIES) {
+      counts[series.id] += row.counts?.[series.id] || 0;
+    }
+  }
+  return {
+    rows,
+    counts,
+    frame_count: frameCount,
+    total: CROP_MAP_CHART_SERIES.reduce((sum, series) => sum + counts[series.id], 0),
+  };
+}
+
+function railShortLabel(railName) {
+  return String(railName || "").replace("rail_", "R");
+}
+
+function chooseRailCropChartGroupSize(rowScreenHeight) {
+  if (rowScreenHeight >= 24) return 1;
+  if (rowScreenHeight >= 10) return 5;
+  const required = Math.ceil(34 / Math.max(1, rowScreenHeight));
+  return Math.min(25, Math.max(5, Math.ceil(required / 5) * 5));
 }
 
 function buildCropTrendSvg(seriesData, xLabels) {
@@ -1603,6 +1654,7 @@ class TileMap {
     if (showLayerOverlay) {
       this.drawLayerSegments(ctx, width, height);
     }
+    this.drawRailCropCharts(ctx, width, height);
 
     // ── Selection highlight ───────────────────────────────────────────────────
     if (this.selectedFrameId != null) {
@@ -1621,6 +1673,95 @@ class TileMap {
         ctx.fill();
       }
     }
+  }
+
+  drawRailCropCharts(ctx, width, height) {
+    const rows = getRailCropRows();
+    if (!rows.length || !this.manifest?.rails?.length) return;
+
+    const layout = this.manifest.layout;
+    const railMap = {};
+    for (const rail of this.manifest.rails) railMap[rail.name] = rail;
+
+    const rowScreenHeight = Math.abs(layout.cell_height * this.scaleY);
+    const groupSize = chooseRailCropChartGroupSize(rowScreenHeight);
+    const chartWidth = clamp(width * 0.18, 150, 220);
+    const labelWidth = groupSize === 1 ? 34 : 68;
+    const valueWidth = 42;
+    const barWidth = Math.max(48, chartWidth - labelWidth - valueWidth - 16);
+    const baseX = clamp(54, 48, Math.max(48, width - chartWidth - 18));
+    const x = Math.min(baseX, width - chartWidth - 12);
+
+    ctx.save();
+    ctx.font = '700 10px "DM Mono", "Noto Sans KR", sans-serif';
+    ctx.textBaseline = "middle";
+
+    for (let index = 0; index < rows.length; index += groupSize) {
+      const groupRows = rows.slice(index, index + groupSize);
+      const firstRail = railMap[groupRows[0]?.rail_name];
+      const lastRail = railMap[groupRows[groupRows.length - 1]?.rail_name];
+      if (!firstRail || !lastRail) continue;
+
+      const topWorld = layout.margin_y + firstRail.rail_y_m * layout.px_per_meter_y;
+      const bottomWorld = layout.margin_y + lastRail.rail_y_m * layout.px_per_meter_y + layout.cell_height;
+      const top = this.worldToScreen(this.centerX, topWorld).y;
+      const bottom = this.worldToScreen(this.centerX, bottomWorld).y;
+      const groupScreenHeight = Math.abs(bottom - top);
+      const yCenter = (top + bottom) / 2;
+      if (yCenter < -40 || yCenter > height + 40) continue;
+
+      const merged = mergeRailCropRows(groupRows);
+      if (merged.total <= 0) continue;
+
+      const chartHeight = groupSize === 1
+        ? clamp(rowScreenHeight * 0.52, 15, 24)
+        : clamp(groupScreenHeight * 0.36, 18, 28);
+      const y = clamp(yCenter - chartHeight / 2, 28, height - chartHeight - 12);
+      const radius = 5;
+
+      const label = groupSize === 1 || groupRows.length === 1
+        ? railShortLabel(groupRows[0].rail_name)
+        : `${railShortLabel(groupRows[0].rail_name)}-${railShortLabel(groupRows[groupRows.length - 1].rail_name)}`;
+
+      ctx.fillStyle = "rgba(8, 13, 10, 0.72)";
+      ctx.strokeStyle = "rgba(236, 244, 237, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, chartWidth, chartHeight, radius);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(236, 244, 237, 0.78)";
+      ctx.textAlign = "left";
+      ctx.fillText(label, x + 8, y + chartHeight / 2);
+
+      const barX = x + labelWidth;
+      const barY = y + Math.max(4, chartHeight * 0.28);
+      const barH = Math.max(6, chartHeight - Math.max(8, chartHeight * 0.55));
+      ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barWidth, barH, 3);
+      ctx.fill();
+
+      let cursorX = barX;
+      for (const series of CROP_MAP_CHART_SERIES) {
+        const value = merged.counts[series.id] || 0;
+        if (value <= 0) continue;
+        const segmentWidth = Math.max(1, (value / merged.total) * barWidth);
+        ctx.fillStyle = series.color;
+        ctx.globalAlpha = 0.82;
+        ctx.fillRect(cursorX, barY, Math.min(segmentWidth, barX + barWidth - cursorX), barH);
+        ctx.globalAlpha = 1;
+        cursorX += segmentWidth;
+        if (cursorX >= barX + barWidth) break;
+      }
+
+      ctx.fillStyle = "rgba(154, 173, 159, 0.84)";
+      ctx.textAlign = "right";
+      ctx.fillText(formatCount(merged.total), x + chartWidth - 8, y + chartHeight / 2);
+    }
+
+    ctx.restore();
   }
 
   drawLayerSegments(ctx, width, height) {
