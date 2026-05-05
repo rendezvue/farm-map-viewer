@@ -129,6 +129,10 @@
                   <span class="hud-label">Zoom</span>
                   <strong id="zoomValue">-</strong>
                 </div>
+                <div class="hud-card hud-card-camera">
+                  <span class="hud-label">Camera XY</span>
+                  <strong id="cameraPointValue">-</strong>
+                </div>
                 <div class="hud-card">
                   <span class="hud-label">Scale</span>
                   <strong id="scaleValue">-</strong>
@@ -148,29 +152,49 @@
                 </div>
                 <button class="map-scroll-arrow map-scroll-arrow-right" id="mapScrollRight" type="button" aria-label="오른쪽 이동"></button>
               </div>
-              <div class="rts-command-console" aria-label="전술 지휘 콘솔">
-                <div class="rts-minimap-panel">
+              <div class="map-minimap-layer">
+                <div class="map-layer-selector" id="mapLayerSelector" aria-label="지도 레이어 선택"></div>
+                <div class="map-minimap-preview">
                   <canvas id="rtsMiniMapCanvas" class="rts-minimap-canvas"></canvas>
                   <div class="rts-panel-caption">TACTICAL MAP</div>
                 </div>
-                <div class="rts-info-panel" id="rtsInfoPanel">
-                  <div class="rts-info-kicker">SELECTED TARGET</div>
-                  <strong id="rtsInfoTitle">-</strong>
-                  <div class="rts-info-grid">
-                    <span>Rail</span><b id="rtsInfoRail">-</b>
-                    <span>Position</span><b id="rtsInfoPosition">-</b>
-                    <span>Status</span><b id="rtsInfoStatus">Awaiting data</b>
+                <div class="case-info-panel">
+                  <div class="case-confidence-row">
+                    <span>Confidence: <strong>100%</strong></span>
+                    <span class="case-trend">Improving</span>
                   </div>
-                  <div class="rts-detection-panel">
-                    <div class="rts-detection-head">
-                      <span>DETECTION RESULTS</span>
-                      <b id="rtsDetectionScope">-</b>
+                  <span class="case-chip">Whiteflies</span>
+                  <div class="case-info-grid">
+                    <div>
+                      <span>First issue reported</span>
+                      <strong>08/11/2024 - 10:00</strong>
                     </div>
-                    <div class="rts-detection-chart" id="rtsDetectionChart"></div>
+                    <div>
+                      <span>Last issue reported</span>
+                      <strong>12/11/2024 - 10:00</strong>
+                    </div>
+                    <div class="case-location">
+                      <span>Location</span>
+                      <strong>Greenhouse 1, Area 1, Row 8, 56</strong>
+                    </div>
                   </div>
                 </div>
-                <div class="rts-command-panel" aria-label="지도 레이어 선택">
-                  <div class="map-layer-selector" id="mapLayerSelector" aria-label="지도 레이어 선택"></div>
+                <div class="case-comments-panel">
+                  <h3>Comments</h3>
+                  <textarea id="caseCommentInput" class="case-comment-input" placeholder="Add a comment."></textarea>
+                  <button id="caseCommentSubmit" class="case-comment-submit" type="button">Submit</button>
+                  <div id="caseCommentList" class="case-comment-list">
+                    <div class="case-comment">
+                      <div class="case-comment-author"><span class="case-avatar">MK</span><strong>Mike</strong></div>
+                      <p>The severity of the pest seems to improve.</p>
+                      <time>12/11/2024 - 10:00</time>
+                    </div>
+                    <div class="case-comment">
+                      <div class="case-comment-author"><span class="case-avatar case-avatar-alt">FC</span><strong>Francis</strong></div>
+                      <p>This issue has been confirmed by me but it's not treated yet.</p>
+                      <time>10/11/2024 - 14:31</time>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

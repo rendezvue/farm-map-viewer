@@ -27,6 +27,11 @@ function formatZoom(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "-";
 }
 
+function formatCameraPoint(x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return "-";
+  return `X ${Math.round(x)} / Y ${Math.round(y)}`;
+}
+
 const COUNT_FORMATTER = new Intl.NumberFormat("ko-KR");
 
 function formatCount(value) {
@@ -430,14 +435,15 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
   if (!legend) return;
   const cropState = getCropPanelState();
   const maturityScore = computeCropMaturityScore(cropState);
+  const mapResourceLabels = ["Flower", "Unripe", "Mid-ripe", "Ripe", "Pest"];
   const resources = [
     ...seriesData.map((series, index) => ({
-      label: series.label,
+      label: mapResourceLabels[index] || series.label,
       value: formatCount(series.value),
       icon: ["flower", "unripe", "midripe", "ripe", "pest"][index] || "crop",
       color: series.color,
     })),
-    { label: "성숙도", value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#30e4be" },
+    { label: "Maturity", value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#45d46a" },
   ];
   legend.innerHTML = resources.map((item) => `
     <div class="map-resource-item" title="${item.label}" aria-label="${item.label} ${item.value}" style="--resource-color:${item.color}">
@@ -446,6 +452,44 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
       <strong>${item.value}</strong>
     </div>
   `).join("");
+}
+
+function initCasePanel() {
+  const guardedOverlays = document.querySelectorAll(".map-minimap-layer, .map-bottom-dock, .map-control-stack, .hud, .map-topline");
+  for (const panel of guardedOverlays) {
+    for (const eventName of ["pointerdown", "pointermove", "pointerup", "pointercancel", "dblclick", "wheel"]) {
+      panel.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+      });
+    }
+  }
+
+  const input = document.getElementById("caseCommentInput");
+  const submit = document.getElementById("caseCommentSubmit");
+  const list = document.getElementById("caseCommentList");
+  if (!input || !submit || !list) return;
+
+  const addComment = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const item = createElement("div", "case-comment");
+    const author = createElement("div", "case-comment-author");
+    const avatar = createElement("span", "case-avatar case-avatar-user", "YU");
+    const name = createElement("strong", "", "You");
+    const body = createElement("p", "", text);
+    const stamp = createElement("time", "", "Just now");
+    author.append(avatar, name);
+    item.append(author, body, stamp);
+    list.prepend(item);
+    input.value = "";
+  };
+
+  submit.addEventListener("click", addComment);
+  input.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      addComment();
+    }
+  });
 }
 
 // ─── Device / session store ──────────────────────────────────────────────────
@@ -477,6 +521,7 @@ let selActiveTab = "info";     // "info" | "trend"
 let currentLayers = null;          // full layers.json payload
 let activeLayerId = null;          // which layer is rendered on map
 let showLayerOverlay = false;      // overlay on/off
+let activeMiniMapLayerIds = new Set();
 let hoveredSegmentId = null;
 let selectedSegmentId = null;
 let selectedPestDetectionId = null;
@@ -523,10 +568,75 @@ const LAYER_LEGEND_STEPS = [
   { label: "중간", value: 55 },
   { label: "높음", value: 85 },
 ];
+const INITIAL_MAP_VIEW = {
+  railName: "rail_001",
+  odomX: 1,
+  zoom: 6.8,
+  centerX: 637,
+  centerY: 248,
+};
+const MAP_LAYER_CONTROL_ORDER = ["disease_pest_risk", "growth_status"];
+const MAP_LAYER_CONTROL_LABELS = {
+  disease_pest_risk: "병충해 위험",
+  growth_status: "생육 상태",
+};
 
 function getActiveLayer() {
   if (!currentLayers || !activeLayerId) return null;
   return currentLayers.layers.find((l) => l.id === activeLayerId) || null;
+}
+
+function getMapLayerControlLayers(layers) {
+  const layerList = layers?.layers || [];
+  const layerById = new Map(layerList.map((layer) => [layer.id, layer]));
+  return MAP_LAYER_CONTROL_ORDER
+    .map((id) => layerById.get(id))
+    .filter(Boolean);
+}
+
+function getActiveMiniMapLayers() {
+  if (!currentLayers?.layers?.length || !activeMiniMapLayerIds.size) return [];
+  const layerById = new Map(currentLayers.layers.map((layer) => [layer.id, layer]));
+  return MAP_LAYER_CONTROL_ORDER
+    .filter((id) => activeMiniMapLayerIds.has(id))
+    .map((id) => layerById.get(id))
+    .filter(Boolean);
+}
+
+function setMiniMapLayerVisible(layerId, visible) {
+  if (visible) activeMiniMapLayerIds.add(layerId);
+  else activeMiniMapLayerIds.delete(layerId);
+  updateMapLayerControlStates();
+  currentMap?.queueRender();
+}
+
+function normalizeRailKey(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const match = text.match(/^(?:rail[_-]?|r)(\d+)$/);
+  if (!match) return text;
+  return `rail_${match[1].padStart(3, "0")}`;
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function findInitialMapFrame(frames, target = INITIAL_MAP_VIEW) {
+  const targetRail = normalizeRailKey(target.railName);
+  const railFrames = frames.filter((frame) => normalizeRailKey(frame.rail_name) === targetRail);
+  const candidates = railFrames.length ? railFrames : frames;
+  return candidates.reduce((best, frame) => {
+    const odomX = Number(frame.odom_x);
+    const distance = Number.isFinite(odomX) ? Math.abs(odomX - target.odomX) : Number.POSITIVE_INFINITY;
+    if (!best || distance < best.distance) return { frame, distance };
+    return best;
+  }, null)?.frame || null;
 }
 
 function getLayerColorFn(layer) {
@@ -744,6 +854,69 @@ function findLayerItemForFrame(layerId, frame) {
   }) || null;
 }
 
+function pickMiniMapRiskFrameIds(item) {
+  const frameIds = Array.isArray(item?.frame_ids) ? item.frame_ids : [];
+  if (!frameIds.length) return [];
+  const value = Number(item.value) || 0;
+  const seed = stableHash(`${item.id || ""}:${item.rail_name || ""}:${item.start_m || ""}:${item.end_m || ""}`);
+  const markerCount = item.severity === "high" || value >= 70
+    ? (seed % 4 === 0 ? 1 : 2)
+    : value >= 45
+      ? (seed % 5 === 0 ? 0 : 1)
+      : 0;
+  if (markerCount <= 0) return [];
+  const pickAt = (ratio) => frameIds[clamp(Math.round((frameIds.length - 1) * ratio), 0, frameIds.length - 1)];
+  if (markerCount === 1 || frameIds.length === 1) {
+    return [pickAt(0.18 + ((seed % 61) / 100))];
+  }
+  return [
+    pickAt(0.12 + ((seed % 37) / 100)),
+    pickAt(0.58 + (((seed >> 3) % 34) / 100)),
+  ].filter((id, index, list) => list.indexOf(id) === index);
+}
+
+function miniMapRiskColor(severity, value = 0) {
+  const numeric = Number(value) || 0;
+  if (severity === "high" || numeric >= 70) return "rgba(255, 91, 69, 0.86)";
+  if (severity === "medium" || numeric >= 45) return "rgba(242, 162, 58, 0.78)";
+  return "rgba(69, 212, 106, 0.58)";
+}
+
+function getDetectionLabel(seed, fallback = "Whiteflies") {
+  const text = String(fallback || "").trim();
+  if (text && !/[가-힣]/.test(text)) return text;
+  return seed % 3 === 0 ? "Whitefly" : "Whiteflies";
+}
+
+function makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected) {
+  if (!riskItem) return [];
+  const value = Number(riskItem.value) || 0;
+  if (value < 45 && !selected) return [];
+  const seed = stableHash(`${frame.id}:${cameraName}:${riskItem.id || ""}`);
+  if (!selected && seed % 5 > 1) return [];
+  const count = selected
+    ? (value >= 70 || seed % 4 === 0 ? 2 : 1)
+    : 1;
+  const boxes = [];
+  for (let index = 0; index < count; index += 1) {
+    const localSeed = stableHash(`${seed}:${index}`);
+    const wide = localSeed % 6 === 0;
+    const w = wide ? 31 + (localSeed % 9) : 18 + (localSeed % 13);
+    const h = wide ? 18 + ((localSeed >> 3) % 9) : 18 + ((localSeed >> 2) % 15);
+    const x = 7 + ((localSeed >> 5) % Math.max(1, Math.round(82 - w)));
+    const y = 10 + ((localSeed >> 9) % Math.max(1, Math.round(78 - h)));
+    boxes.push({
+      x,
+      y,
+      w,
+      h,
+      label: getDetectionLabel(localSeed),
+      severity: riskItem.severity,
+    });
+  }
+  return boxes;
+}
+
 function getFrameCropCounts(frame) {
   const railRow = getRailCropRows(currentCropSummary).find((row) => row.rail_name === frame?.rail_name);
   if (railRow) return { ...railRow.counts };
@@ -828,7 +1001,7 @@ function buildDetectionBarData(frame) {
       id: "maturity",
       label: "성숙도",
       value: maturity,
-      color: "#30e4be",
+      color: "#45d46a",
       unit: "",
     },
   ];
@@ -1202,6 +1375,7 @@ class TileMap {
     if (!this.miniMapCanvas) return;
     const moveToPointer = (event) => {
       event.preventDefault();
+      event.stopPropagation();
       const rect = this.miniMapCanvas.getBoundingClientRect();
       const mapped = this.miniMapScreenToWorld(
         event.clientX - rect.left,
@@ -1231,6 +1405,7 @@ class TileMap {
       },
       endPointer: (event) => {
         if (!this.miniMapDrag) return;
+        event.stopPropagation();
         this.miniMapCanvas.releasePointerCapture?.(event.pointerId);
         this.miniMapCanvas.classList.remove("is-dragging");
         this.miniMapDrag = null;
@@ -1522,6 +1697,18 @@ class TileMap {
     this.queueRender();
   }
 
+  focusFrameAtZoom(frame, zoom, { centerX = null, centerY = null } = {}) {
+    const rect = frame.rect_px;
+    this.centerX = Number.isFinite(centerX) ? centerX : rect.center_x;
+    this.centerY = Number.isFinite(centerY) ? centerY : rect.center_y;
+    this.selectedFrameId = frame.id;
+    this.currentZoom = clamp(zoom, this.minZoom, this.maxZoom);
+    this.updateViewTransform();
+    this.clampCenter();
+    this.updateViewTransform();
+    this.queueRender();
+  }
+
   focusWorldPoint(worldX, worldY, { frameId = null, zoomFloor = this.manifest.max_zoom - 1.8 } = {}) {
     this.centerX = worldX;
     this.centerY = worldY;
@@ -1761,6 +1948,7 @@ class TileMap {
     for (const cameraName of CAMERA_ORDER) {
       const cell = document.createElement("div");
       cell.className = "detail-cell-wrap";
+      cell.dataset.cameraName = cameraName;
       const camera = frame.cameras[cameraName];
       if (camera) {
         const image = document.createElement("img");
@@ -1781,6 +1969,69 @@ class TileMap {
     wrapper.appendChild(grid);
     this.detailPane.appendChild(wrapper);
     return wrapper;
+  }
+
+  getDetectionBoxesForCamera(frame, cameraName) {
+    const camera = frame.cameras?.[cameraName];
+    if (!camera) return [];
+    const realDetections = (this.pestDetections.detections || [])
+      .filter((detection) => Number(detection.frame_id) === Number(frame.id))
+      .filter((detection) => !detection.camera || detection.camera === cameraName);
+
+    if (realDetections.length) {
+      return realDetections.map((detection, index) => {
+        const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
+        if (bbox && camera.width && camera.height) {
+          const x1 = clamp((Math.min(bbox[0], bbox[2]) / camera.width) * 100, 0, 96);
+          const y1 = clamp((Math.min(bbox[1], bbox[3]) / camera.height) * 100, 0, 94);
+          const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 4, 100);
+          const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 4, 100);
+          return {
+            x: x1,
+            y: y1,
+            w: x2 - x1,
+            h: y2 - y1,
+            label: getDetectionLabel(index, detection.label),
+            severity: detection.severity,
+          };
+        }
+        const seed = stableHash(`${detection.id}:${cameraName}:${index}`);
+        return makeSyntheticDetectionBoxes(frame, cameraName, {
+          id: detection.id,
+          value: detection.severity === "high" ? 85 : detection.severity === "medium" ? 62 : 35,
+          severity: detection.severity,
+        }, true)[0] || null;
+      }).filter(Boolean);
+    }
+
+    const riskItem = findLayerItemForFrame("disease_pest_risk", frame);
+    const selected = Number(frame.id) === Number(this.selectedFrameId);
+    return makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected);
+  }
+
+  updateDetailFrameDetectionOverlays(detail, frame) {
+    for (const cell of detail.querySelectorAll(".detail-cell-wrap")) {
+      cell.querySelector(".pest-box-layer")?.remove();
+      const cameraName = cell.dataset.cameraName;
+      const boxes = this.getDetectionBoxesForCamera(frame, cameraName);
+      if (!boxes.length) continue;
+      const layer = document.createElement("div");
+      layer.className = "pest-box-layer";
+      for (const box of boxes) {
+        const marker = document.createElement("div");
+        marker.className = `pest-detect-box severity-${box.severity || "medium"}`;
+        marker.style.left = `${box.x}%`;
+        marker.style.top = `${box.y}%`;
+        marker.style.width = `${box.w}%`;
+        marker.style.height = `${box.h}%`;
+        const label = document.createElement("span");
+        label.className = "pest-detect-label";
+        label.textContent = box.label || "Whiteflies";
+        marker.appendChild(label);
+        layer.appendChild(marker);
+      }
+      cell.appendChild(layer);
+    }
   }
 
   createFrameAnnotation(frame) {
@@ -2014,10 +2265,10 @@ class TileMap {
     const mapH = this.manifest.image_height * tx.scale;
     const layout = this.manifest.layout || {};
 
-    ctx.fillStyle = "#031013";
+    ctx.fillStyle = "#171717";
     ctx.fillRect(tx.ox, tx.oy, mapW, mapH);
 
-    ctx.strokeStyle = "rgba(45, 238, 214, 0.18)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
     ctx.lineWidth = 1;
     for (let i = 1; i < 8; i += 1) {
       const x = tx.ox + (mapW * i) / 8;
@@ -2037,7 +2288,7 @@ class TileMap {
 
     for (const rail of this.manifest.rails || []) {
       const railY = (Number(layout.margin_y) || 0) + rail.rail_y_m * layout.px_per_meter_y + layout.cell_height / 2;
-      ctx.strokeStyle = "rgba(48, 228, 190, 0.52)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(sx(this.railTrackWorldBounds.left), sy(railY));
@@ -2045,7 +2296,7 @@ class TileMap {
       ctx.stroke();
     }
 
-    ctx.fillStyle = "rgba(95, 255, 101, 0.42)";
+    ctx.fillStyle = "rgba(69, 212, 106, 0.36)";
     for (const frame of this.frames) {
       const r = frame.rect_px;
       ctx.fillRect(
@@ -2056,11 +2307,13 @@ class TileMap {
       );
     }
 
+    this.drawMiniMapLayerSegments(ctx, tx);
+
     if (this.selectedFrameId != null) {
       const frame = this.framesById.get(String(this.selectedFrameId));
       if (frame) {
         const r = frame.rect_px;
-        ctx.strokeStyle = "rgba(255, 91, 69, 0.9)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.72)";
         ctx.lineWidth = 1.5;
         ctx.strokeRect(
           sx(r.left),
@@ -2073,17 +2326,17 @@ class TileMap {
 
     const viewport = this.getMiniMapViewportRect(width, height, bounds);
     if (viewport) {
-      ctx.fillStyle = "rgba(247, 215, 90, 0.08)";
+      ctx.fillStyle = "rgba(69, 212, 106, 0.08)";
       ctx.fillRect(viewport.left, viewport.top, viewport.width, viewport.height);
-      ctx.strokeStyle = "rgba(247, 215, 90, 0.98)";
+      ctx.strokeStyle = "rgba(69, 212, 106, 0.98)";
       ctx.lineWidth = 2;
       ctx.strokeRect(viewport.left, viewport.top, viewport.width, viewport.height);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
       ctx.lineWidth = 1;
       ctx.strokeRect(viewport.left + 3, viewport.top + 3, Math.max(1, viewport.width - 6), Math.max(1, viewport.height - 6));
     }
 
-    ctx.strokeStyle = "rgba(46, 234, 214, 0.72)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
     ctx.lineWidth = 1;
     ctx.strokeRect(tx.ox + 0.5, tx.oy + 0.5, mapW - 1, mapH - 1);
   }
@@ -2108,6 +2361,7 @@ class TileMap {
         detail = this.createDetailFrame(frame);
         this.visibleDetails.set(frame.id, detail);
       }
+      this.updateDetailFrameDetectionOverlays(detail, frame);
       const topLeft = this.worldToScreen(rect.left, rect.top);
       const bottomRight = this.worldToScreen(rect.right, rect.bottom);
       detail.style.left = `${topLeft.x}px`;
@@ -2197,6 +2451,8 @@ class TileMap {
     this.onViewChange({
       zoom: this.currentZoom,
       screenPxPerMeter: this.scaleX * this.manifest.layout.px_per_meter_x,
+      centerX: this.centerX,
+      centerY: this.centerY,
     });
 
     if (this.prefetchTimer) clearTimeout(this.prefetchTimer);
@@ -2689,6 +2945,96 @@ class TileMap {
       }
 
       ctx.restore();
+    }
+  }
+
+  drawMiniMapLayerSegments(ctx, tx) {
+    const layers = getActiveMiniMapLayers();
+    if (!layers.length) return;
+
+    const pestRiskLayers = layers.filter((layer) => layer.id === "disease_pest_risk");
+    const segmentLayers = layers.filter((layer) => layer.id !== "disease_pest_risk");
+    const layout = this.manifest.layout || {};
+    const world = this.manifest.world || {};
+    const railMap = new Map((this.manifest.rails || []).map((rail) => [rail.name, rail]));
+    const marginX = Number(layout.margin_x) || 0;
+    const marginY = Number(layout.margin_y) || 0;
+    const pxPerMeterX = Number(layout.px_per_meter_x) || 0;
+    const pxPerMeterY = Number(layout.px_per_meter_y) || 0;
+    const cellHeight = Number(layout.cell_height) || 0;
+    const odomMin = Number(world.odom_x_min) || 0;
+    if (!pxPerMeterX || !pxPerMeterY || !cellHeight) return;
+
+    const sx = (x) => tx.ox + x * tx.scale;
+    const sy = (y) => tx.oy + y * tx.scale;
+    const laneCount = Math.max(1, segmentLayers.length);
+
+    segmentLayers.forEach((layer, layerIndex) => {
+      const colorFn = getLayerColorFn(layer);
+      for (const item of layer.items || []) {
+        const rail = railMap.get(item.rail_name);
+        if (!rail) continue;
+        const start = Number(item.start_m);
+        const end = Number(item.end_m);
+        if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+
+        const railTop = marginY + (Number(rail.rail_y_m) || 0) * pxPerMeterY;
+        const laneTop = railTop + (cellHeight * layerIndex) / laneCount;
+        const laneBottom = railTop + (cellHeight * (layerIndex + 1)) / laneCount;
+        const segLeft = marginX + (Math.min(start, end) - odomMin) * pxPerMeterX;
+        const segRight = marginX + (Math.max(start, end) - odomMin) * pxPerMeterX;
+        const x = sx(segLeft);
+        const y = sy(laneTop);
+        const w = Math.max(1, (segRight - segLeft) * tx.scale);
+        const h = Math.max(1, (laneBottom - laneTop) * tx.scale);
+
+        ctx.fillStyle = colorFn(Number(item.value) || 0);
+        ctx.fillRect(x, y, w, h);
+      }
+    });
+
+    for (const layer of pestRiskLayers) {
+      this.drawMiniMapPestRiskPhotos(ctx, tx, layer);
+    }
+  }
+
+  drawMiniMapPestRiskPhotos(ctx, tx, layer) {
+    const markers = new Map();
+    for (const detection of this.pestDetections.detections || []) {
+      const frame = this.framesById.get(String(detection.frame_id));
+      if (!frame) continue;
+      markers.set(String(frame.id), {
+        frame,
+        severity: detection.severity,
+        value: detection.severity === "high" ? 85 : detection.severity === "medium" ? 60 : 30,
+      });
+    }
+
+    if (!markers.size) {
+      for (const item of layer.items || []) {
+        for (const frameId of pickMiniMapRiskFrameIds(item)) {
+          const frame = this.framesById.get(String(frameId));
+          if (!frame) continue;
+          markers.set(String(frame.id), {
+            frame,
+            severity: item.severity,
+            value: Number(item.value) || 0,
+          });
+        }
+      }
+    }
+
+    for (const marker of markers.values()) {
+      const r = marker.frame.rect_px;
+      const x = tx.ox + r.left * tx.scale;
+      const y = tx.oy + r.top * tx.scale;
+      const w = Math.max(2, (r.right - r.left) * tx.scale);
+      const h = Math.max(2, (r.bottom - r.top) * tx.scale);
+      ctx.fillStyle = miniMapRiskColor(marker.severity, marker.value);
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.max(1, Math.round(w) - 1), Math.max(1, Math.round(h) - 1));
     }
   }
 
@@ -3379,7 +3725,8 @@ function renderLayersPanel(layers) {
 function renderMapLayerControls(layers) {
   const selector = document.getElementById("mapLayerSelector");
   if (!selector) return;
-  if (!layers || !layers.layers?.length) {
+  const controlLayers = getMapLayerControlLayers(layers);
+  if (!controlLayers.length) {
     selector.hidden = true;
     selector.innerHTML = "";
     return;
@@ -3392,7 +3739,7 @@ function renderMapLayerControls(layers) {
   `;
   const options = selector.querySelector(".map-layer-options");
 
-  for (const layer of layers.layers) {
+  for (const layer of controlLayers) {
     const label = document.createElement("label");
     label.className = "map-layer-option";
     label.dataset.layerId = layer.id;
@@ -3407,17 +3754,17 @@ function renderMapLayerControls(layers) {
     indicator.className = "map-layer-swatch";
     indicator.dataset.scheme = layer.color_scheme;
 
-    const text = createElement("span", "map-layer-name", layer.label);
+    const text = createElement("span", "map-layer-name", MAP_LAYER_CONTROL_LABELS[layer.id] || layer.label);
 
     label.append(checkbox, indicator, text);
     label.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", () => {
-      setActiveMapLayer(layer.id, { forceOff: !checkbox.checked });
+      setMiniMapLayerVisible(layer.id, checkbox.checked);
     });
     options.appendChild(label);
   }
 
-  updateLayerRowStates();
+  updateMapLayerControlStates();
 }
 
 function updateLayerRowStates() {
@@ -3425,15 +3772,18 @@ function updateLayerRowStates() {
     const isActive = showLayerOverlay && row.dataset.layerId === activeLayerId;
     row.classList.toggle("is-active", isActive);
   }
+  // Update toolbar button
+  const btn = document.getElementById("toggleLayersButton");
+  if (btn) btn.classList.toggle("is-active", showLayerOverlay);
+}
+
+function updateMapLayerControlStates() {
   for (const option of document.querySelectorAll(".map-layer-option")) {
-    const isActive = showLayerOverlay && option.dataset.layerId === activeLayerId;
+    const isActive = activeMiniMapLayerIds.has(option.dataset.layerId);
     option.classList.toggle("is-active", isActive);
     const checkbox = option.querySelector("input[type='checkbox']");
     if (checkbox) checkbox.checked = isActive;
   }
-  // Update toolbar button
-  const btn = document.getElementById("toggleLayersButton");
-  if (btn) btn.classList.toggle("is-active", showLayerOverlay);
 }
 
 function renderLayerLegend(layer) {
@@ -4128,8 +4478,9 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   currentLayers = layers;
   currentLayersData = layers;
   // Reset layer state for new session
-  activeLayerId = chooseDefaultLayerId(layers);
-  showLayerOverlay = Boolean(activeLayerId);
+  activeLayerId = null;
+  showLayerOverlay = false;
+  activeMiniMapLayerIds = new Set(["disease_pest_risk"]);
   selectedSegmentId = null;
   hoveredSegmentId = null;
   selectedPestDetectionId = null;
@@ -4193,6 +4544,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 
   const zoomValue = document.getElementById("zoomValue");
   const scaleValue = document.getElementById("scaleValue");
+  const cameraPointValue = document.getElementById("cameraPointValue");
   const map = new TileMap({
     container: document.getElementById("mapViewport"),
     tilePane: document.getElementById("tilePane"),
@@ -4214,10 +4566,11 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     manifest,
     frames,
     pestDetections: currentPestDetections,
-    maxZoom: computeViewerMaxZoom(manifest, frames),
+    maxZoom: Math.max(computeViewerMaxZoom(manifest, frames), INITIAL_MAP_VIEW.zoom),
     onSelect: (frame) => renderSelection(frame, currentInsightsData),
-    onViewChange: ({ zoom, screenPxPerMeter }) => {
+    onViewChange: ({ zoom, screenPxPerMeter, centerX, centerY }) => {
       zoomValue.textContent = formatZoom(zoom);
+      if (cameraPointValue) cameraPointValue.textContent = formatCameraPoint(centerX, centerY);
       scaleValue.textContent = screenPxPerMeter > 0 ? `${(1 / screenPxPerMeter).toFixed(3)} m/px` : "-";
     },
   });
@@ -4235,10 +4588,13 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   const trendTabBtn = document.getElementById("trendTabBtn");
   if (trendTabBtn) trendTabBtn.disabled = true;
 
-  if (frames[0]) {
-    map.selectedFrameId = frames[0].id;
-    map.queueRender();
-    renderSelection(frames[0], insights);
+  const initialFrame = findInitialMapFrame(frames);
+  if (initialFrame) {
+    map.focusFrameAtZoom(initialFrame, INITIAL_MAP_VIEW.zoom, {
+      centerX: INITIAL_MAP_VIEW.centerX,
+      centerY: INITIAL_MAP_VIEW.centerY,
+    });
+    renderSelection(initialFrame, insights);
     setRightPanelMode("tasks");
   }
 
@@ -4286,6 +4642,7 @@ function renderSessionList(sessions, activeDevice, onSelect) {
 async function bootstrap() {
   const summary = document.getElementById("datasetSummary");
   renderCropPanel();
+  initCasePanel();
   initInspectorTabs();
   initMapControls();
 
