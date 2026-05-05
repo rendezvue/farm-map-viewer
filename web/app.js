@@ -882,10 +882,68 @@ function miniMapRiskColor(severity, value = 0) {
   return "rgba(69, 212, 106, 0.58)";
 }
 
-function getDetectionLabel(seed, fallback = "Whiteflies") {
-  const text = String(fallback || "").trim();
-  if (text && !/[가-힣]/.test(text)) return text;
-  return seed % 3 === 0 ? "Whitefly" : "Whiteflies";
+const DISEASE_LABELS = [
+  { id: "powdery-mildew", label: "Powdery mildew", aliases: ["흰가루병", "powdery mildew"] },
+  { id: "gray-mold", label: "Gray mold / Botrytis fruit rot", aliases: ["잿빛곰팡이병", "gray mold", "botrytis fruit rot"] },
+  { id: "spider-mite", label: "Two-spotted spider mite", aliases: ["점박이응애", "two-spotted spider mite", "spider mite"] },
+  { id: "thrips", label: "Thrips", aliases: ["총채벌레", "thrips"] },
+  { id: "anthracnose", label: "Anthracnose", aliases: ["탄저병", "anthracnose"] },
+];
+
+function getDiseaseInfo(seed, fallback = "") {
+  const text = String(fallback || "").trim().toLowerCase();
+  const matched = DISEASE_LABELS.find((item) =>
+    item.aliases.some((alias) => text === alias || text.includes(alias))
+  );
+  if (matched) return matched;
+  return DISEASE_LABELS[Math.abs(seed) % DISEASE_LABELS.length];
+}
+
+function normalizeDetectionBox(box) {
+  const w = clamp(Number(box.w) || 22, 14, 42);
+  const h = clamp(Number(box.h) || 20, 18, 36);
+  return {
+    ...box,
+    w,
+    h,
+    x: clamp(Number(box.x) || 0, 3, 97 - w),
+    y: clamp(Number(box.y) || 0, 4, 96 - h),
+  };
+}
+
+function detectionBoxesOverlap(a, b, gap = 3) {
+  return !(
+    a.x + a.w + gap <= b.x
+    || b.x + b.w + gap <= a.x
+    || a.y + a.h + gap <= b.y
+    || b.y + b.h + gap <= a.y
+  );
+}
+
+function placeDetectionBox(candidate, placed, seed) {
+  const first = normalizeDetectionBox(candidate);
+  if (!placed.some((box) => detectionBoxesOverlap(first, box))) return first;
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const attemptSeed = stableHash(`${seed}:${attempt}`);
+    const shifted = normalizeDetectionBox({
+      ...candidate,
+      x: 4 + ((attemptSeed >> 4) % Math.max(1, Math.round(92 - candidate.w))),
+      y: 6 + ((attemptSeed >> 9) % Math.max(1, Math.round(88 - candidate.h))),
+    });
+    if (!placed.some((box) => detectionBoxesOverlap(shifted, box))) return shifted;
+  }
+
+  const fallbackY = placed.reduce((cursor, box) => Math.max(cursor, box.y + box.h + 4), 6);
+  return normalizeDetectionBox({ ...candidate, y: fallbackY });
+}
+
+function layoutDetectionBoxes(boxes, seed) {
+  const placed = [];
+  for (const box of boxes.filter(Boolean)) {
+    placed.push(placeDetectionBox(box, placed, `${seed}:${placed.length}`));
+  }
+  return placed;
 }
 
 function makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected) {
@@ -900,9 +958,11 @@ function makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected) {
   const boxes = [];
   for (let index = 0; index < count; index += 1) {
     const localSeed = stableHash(`${seed}:${index}`);
-    const wide = localSeed % 6 === 0;
-    const w = wide ? 31 + (localSeed % 9) : 18 + (localSeed % 13);
-    const h = wide ? 18 + ((localSeed >> 3) % 9) : 18 + ((localSeed >> 2) % 15);
+    const disease = getDiseaseInfo(localSeed, riskItem.label);
+    const wide = disease.id === "thrips" || disease.id === "gray-mold" || localSeed % 6 === 0;
+    const compact = disease.id === "spider-mite";
+    const w = compact ? 16 + (localSeed % 10) : wide ? 30 + (localSeed % 12) : 19 + (localSeed % 14);
+    const h = compact ? 15 + ((localSeed >> 2) % 9) : wide ? 17 + ((localSeed >> 3) % 10) : 18 + ((localSeed >> 2) % 15);
     const x = 7 + ((localSeed >> 5) % Math.max(1, Math.round(82 - w)));
     const y = 10 + ((localSeed >> 9) % Math.max(1, Math.round(78 - h)));
     boxes.push({
@@ -910,11 +970,12 @@ function makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected) {
       y,
       w,
       h,
-      label: getDetectionLabel(localSeed),
+      label: disease.label,
+      diseaseId: disease.id,
       severity: riskItem.severity,
     });
   }
-  return boxes;
+  return layoutDetectionBoxes(boxes, `${frame.id}:${cameraName}:${riskItem.id || ""}`);
 }
 
 function getFrameCropCounts(frame) {
@@ -1062,7 +1123,8 @@ function setActiveMapLayer(layerId, { forceOff = false } = {}) {
 }
 
 function formatPestMarkerTitle(detection) {
-  const bits = [detection.label || "병충해"];
+  const disease = getDiseaseInfo(stableHash(detection.id || `${detection.frame_id}`), detection.label);
+  const bits = [disease.label];
   if (detection.rail_name && detection.odom_x != null) {
     bits.push(`${detection.rail_name} ${detection.odom_x.toFixed(1)}m`);
   }
@@ -1979,29 +2041,33 @@ class TileMap {
       .filter((detection) => !detection.camera || detection.camera === cameraName);
 
     if (realDetections.length) {
-      return realDetections.map((detection, index) => {
+      const boxes = realDetections.map((detection, index) => {
         const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
         if (bbox && camera.width && camera.height) {
-          const x1 = clamp((Math.min(bbox[0], bbox[2]) / camera.width) * 100, 0, 96);
-          const y1 = clamp((Math.min(bbox[1], bbox[3]) / camera.height) * 100, 0, 94);
-          const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 4, 100);
-          const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 4, 100);
+          const disease = getDiseaseInfo(index, detection.label);
+          const x1 = clamp((Math.min(bbox[0], bbox[2]) / camera.width) * 100, 3, 94);
+          const y1 = clamp((Math.min(bbox[1], bbox[3]) / camera.height) * 100, 4, 92);
+          const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 14, 97);
+          const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 18, 96);
           return {
             x: x1,
             y: y1,
             w: x2 - x1,
             h: y2 - y1,
-            label: getDetectionLabel(index, detection.label),
+            label: disease.label,
+            diseaseId: disease.id,
             severity: detection.severity,
           };
         }
         const seed = stableHash(`${detection.id}:${cameraName}:${index}`);
         return makeSyntheticDetectionBoxes(frame, cameraName, {
           id: detection.id,
+          label: detection.label,
           value: detection.severity === "high" ? 85 : detection.severity === "medium" ? 62 : 35,
           severity: detection.severity,
         }, true)[0] || null;
       }).filter(Boolean);
+      return layoutDetectionBoxes(boxes, `${frame.id}:${cameraName}:real`);
     }
 
     const riskItem = findLayerItemForFrame("disease_pest_risk", frame);
@@ -2009,10 +2075,36 @@ class TileMap {
     return makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected);
   }
 
+  isCameraCellFullyVisible(frame, cameraName) {
+    const rect = frame.rect_px;
+    const quadrantOffsets = {
+      front_left: { x: 0.0, y: 0.0 },
+      front_right: { x: 0.5, y: 0.0 },
+      rear: { x: 0.0, y: 0.5 },
+      side: { x: 0.5, y: 0.5 },
+    };
+    const quadrant = quadrantOffsets[cameraName];
+    if (!quadrant) return true;
+    const topLeft = this.worldToScreen(
+      rect.left + rect.width * quadrant.x,
+      rect.top + rect.height * quadrant.y,
+    );
+    const bottomRight = this.worldToScreen(
+      rect.left + rect.width * (quadrant.x + 0.5),
+      rect.top + rect.height * (quadrant.y + 0.5),
+    );
+    const pad = 1;
+    return topLeft.x >= -pad
+      && topLeft.y >= -pad
+      && bottomRight.x <= this.viewportWidth + pad
+      && bottomRight.y <= this.viewportHeight + pad;
+  }
+
   updateDetailFrameDetectionOverlays(detail, frame) {
     for (const cell of detail.querySelectorAll(".detail-cell-wrap")) {
       cell.querySelector(".pest-box-layer")?.remove();
       const cameraName = cell.dataset.cameraName;
+      if (!this.isCameraCellFullyVisible(frame, cameraName)) continue;
       const boxes = this.getDetectionBoxesForCamera(frame, cameraName);
       if (!boxes.length) continue;
       const layer = document.createElement("div");
@@ -2020,13 +2112,14 @@ class TileMap {
       for (const box of boxes) {
         const marker = document.createElement("div");
         marker.className = `pest-detect-box severity-${box.severity || "medium"}`;
+        marker.dataset.disease = box.diseaseId || "";
         marker.style.left = `${box.x}%`;
         marker.style.top = `${box.y}%`;
         marker.style.width = `${box.w}%`;
         marker.style.height = `${box.h}%`;
         const label = document.createElement("span");
         label.className = "pest-detect-label";
-        label.textContent = box.label || "Whiteflies";
+        label.textContent = box.label || getDiseaseInfo(0).label;
         marker.appendChild(label);
         layer.appendChild(marker);
       }
@@ -2173,7 +2266,7 @@ class TileMap {
 
     const label = document.createElement("span");
     label.className = "pest-marker-label";
-    label.textContent = detection.label || "병충해";
+    label.textContent = getDiseaseInfo(stableHash(detection.id || `${detection.frame_id}`), detection.label).label;
 
     button.append(iconWrap, label);
     button.addEventListener("pointerdown", (event) => {

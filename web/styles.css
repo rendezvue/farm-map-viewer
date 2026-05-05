@@ -4485,16 +4485,139 @@ body.modal-open { overflow: hidden; }
 }
 
 .pest-detect-box {
-  border-color: rgba(219, 246, 255, 0.94);
-  border-radius: 4px;
+  overflow: visible;
+  border: 1.5px solid rgba(219, 246, 255, 0.92);
+  border-radius: 5px;
+  background: rgba(5, 12, 9, 0.03);
   box-shadow:
-    0 0 0 1px rgba(8, 15, 13, 0.52),
-    0 4px 12px rgba(0, 0, 0, 0.22);
+    0 0 0 1px rgba(6, 12, 10, 0.32),
+    0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.pest-detect-box::before,
+.pest-detect-box::after {
+  content: "";
+  position: absolute;
+  inset: 8px 6px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.pest-detect-box::before {
+  opacity: 0.52;
+  mix-blend-mode: screen;
+}
+
+.pest-detect-box::after {
+  opacity: 0.78;
+  mix-blend-mode: screen;
+}
+
+.pest-detect-box[data-disease="powdery-mildew"] {
+  border-color: rgba(230, 248, 255, 0.96);
+}
+
+.pest-detect-box[data-disease="powdery-mildew"]::before {
+  background:
+    radial-gradient(circle at 22% 28%, rgba(245, 255, 245, 0.86) 0 2px, transparent 4px),
+    radial-gradient(circle at 58% 42%, rgba(245, 255, 245, 0.66) 0 3px, transparent 6px),
+    radial-gradient(circle at 76% 72%, rgba(245, 255, 245, 0.52) 0 2px, transparent 5px);
+  filter: blur(0.4px);
+}
+
+.pest-detect-box[data-disease="powdery-mildew"]::after {
+  background:
+    radial-gradient(circle at 18% 34%, rgba(250, 255, 240, 0.95) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 42% 62%, rgba(250, 255, 240, 0.72) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 68% 26%, rgba(250, 255, 240, 0.82) 0 1px, transparent 1.8px),
+    radial-gradient(circle at 82% 70%, rgba(250, 255, 240, 0.68) 0 1px, transparent 1.8px);
+}
+
+.pest-detect-box[data-disease="gray-mold"] {
+  border-color: rgba(201, 217, 208, 0.95);
+}
+
+.pest-detect-box[data-disease="gray-mold"]::before {
+  background:
+    radial-gradient(circle at 42% 48%, rgba(189, 200, 190, 0.5) 0 38%, transparent 58%),
+    radial-gradient(circle at 65% 62%, rgba(114, 98, 84, 0.38) 0 18%, transparent 38%);
+  filter: blur(2px);
+}
+
+.pest-detect-box[data-disease="gray-mold"]::after {
+  background:
+    radial-gradient(circle at 30% 36%, rgba(230, 234, 220, 0.44) 0 1px, transparent 2px),
+    radial-gradient(circle at 54% 48%, rgba(180, 188, 178, 0.66) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 65%, rgba(150, 136, 118, 0.58) 0 1px, transparent 2px);
+}
+
+.pest-detect-box[data-disease="spider-mite"] {
+  border-color: rgba(246, 232, 152, 0.96);
+}
+
+.pest-detect-box[data-disease="spider-mite"]::before {
+  background:
+    linear-gradient(32deg, transparent 0 46%, rgba(235, 245, 225, 0.28) 47% 48%, transparent 49%),
+    linear-gradient(145deg, transparent 0 54%, rgba(235, 245, 225, 0.22) 55% 56%, transparent 57%);
+}
+
+.pest-detect-box[data-disease="spider-mite"]::after {
+  background:
+    radial-gradient(circle at 20% 32%, rgba(255, 236, 126, 0.95) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 36% 54%, rgba(255, 236, 126, 0.72) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 62% 38%, rgba(255, 236, 126, 0.86) 0 1px, transparent 1.7px),
+    radial-gradient(circle at 78% 66%, rgba(255, 236, 126, 0.7) 0 1px, transparent 1.7px);
+}
+
+.pest-detect-box[data-disease="thrips"] {
+  border-color: rgba(228, 238, 230, 0.94);
+}
+
+.pest-detect-box[data-disease="thrips"]::before {
+  background:
+    linear-gradient(104deg, transparent 0 26%, rgba(232, 240, 220, 0.5) 27% 31%, transparent 32%),
+    linear-gradient(104deg, transparent 0 54%, rgba(232, 240, 220, 0.42) 55% 58%, transparent 59%),
+    linear-gradient(104deg, transparent 0 72%, rgba(232, 240, 220, 0.35) 73% 76%, transparent 77%);
+  filter: blur(0.4px);
+}
+
+.pest-detect-box[data-disease="thrips"]::after {
+  background:
+    radial-gradient(ellipse at 28% 48%, rgba(255, 255, 238, 0.7) 0 7%, transparent 16%),
+    radial-gradient(ellipse at 64% 58%, rgba(255, 255, 238, 0.56) 0 8%, transparent 18%);
+}
+
+.pest-detect-box[data-disease="anthracnose"] {
+  border-color: rgba(255, 193, 146, 0.96);
+}
+
+.pest-detect-box[data-disease="anthracnose"]::before {
+  background:
+    radial-gradient(circle at 34% 48%, rgba(54, 28, 17, 0.72) 0 20%, rgba(180, 92, 45, 0.38) 26%, transparent 45%),
+    radial-gradient(circle at 66% 58%, rgba(48, 22, 14, 0.62) 0 15%, rgba(195, 104, 48, 0.34) 24%, transparent 42%);
+  mix-blend-mode: multiply;
+}
+
+.pest-detect-box[data-disease="anthracnose"]::after {
+  background:
+    radial-gradient(circle at 38% 48%, rgba(255, 180, 102, 0.42) 0 1px, transparent 2px),
+    radial-gradient(circle at 66% 58%, rgba(255, 180, 102, 0.32) 0 1px, transparent 2px);
 }
 
 .pest-detect-label {
+  left: -1px;
+  right: auto;
+  top: -1px;
+  max-width: min(148px, calc(100% + 18px));
+  height: 17px;
+  padding: 1px 7px 0;
+  border-radius: 4px 4px 4px 0;
   background: rgba(229, 248, 255, 0.96);
-  color: #172320;
+  color: #172521;
+  font-size: 8px;
+  letter-spacing: 0;
+  line-height: 15px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 
 @media (max-width: 1280px) {
