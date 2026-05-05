@@ -252,34 +252,6 @@ function getRailCropRows(summary = currentCropSummary) {
     .sort((a, b) => a.rail_column - b.rail_column);
 }
 
-function mergeRailCropRows(rows) {
-  const counts = { flower: 0, unripe: 0, midripe: 0, ripe: 0 };
-  let frameCount = 0;
-  for (const row of rows) {
-    frameCount += row.frame_count || 0;
-    for (const series of CROP_MAP_CHART_SERIES) {
-      counts[series.id] += row.counts?.[series.id] || 0;
-    }
-  }
-  return {
-    rows,
-    counts,
-    frame_count: frameCount,
-    total: CROP_MAP_CHART_SERIES.reduce((sum, series) => sum + counts[series.id], 0),
-  };
-}
-
-function railShortLabel(railName) {
-  return String(railName || "").replace("rail_", "R");
-}
-
-function chooseRailCropChartGroupSize(rowScreenHeight) {
-  if (rowScreenHeight >= 24) return 1;
-  if (rowScreenHeight >= 10) return 5;
-  const required = Math.ceil(34 / Math.max(1, rowScreenHeight));
-  return Math.min(25, Math.max(5, Math.ceil(required / 5) * 5));
-}
-
 function buildCropTrendSvg(seriesData, xLabels) {
   const width = 320;
   const padding = { top: 16, right: 70, bottom: 24, left: 56 };
@@ -752,6 +724,140 @@ function chooseDefaultLayerId(layers) {
   const preferred = layerList.find((layer) => layer.id === "disease_pest_risk_v2_harvest")
     || layerList.find((layer) => layer.id === "disease_pest_risk_v2");
   return preferred?.id || layerList[0]?.id || null;
+}
+
+function findLayerItemForFrame(layerId, frame) {
+  if (!frame || !currentLayers?.layers?.length) return null;
+  const layer = currentLayers.layers.find((item) => item.id === layerId);
+  if (!layer || !Array.isArray(layer.items)) return null;
+  const frameId = Number(frame.id);
+  const odomX = Number(frame.odom_x);
+  return layer.items.find((item) => {
+    if (Array.isArray(item.frame_ids) && Number.isFinite(frameId) && item.frame_ids.includes(frameId)) {
+      return true;
+    }
+    if (item.rail_name !== frame.rail_name || !Number.isFinite(odomX)) return false;
+    const start = Number(item.start_m);
+    const end = Number(item.end_m);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    return odomX >= Math.min(start, end) && odomX <= Math.max(start, end);
+  }) || null;
+}
+
+function getFrameCropCounts(frame) {
+  const railRow = getRailCropRows(currentCropSummary).find((row) => row.rail_name === frame?.rail_name);
+  if (railRow) return { ...railRow.counts };
+  const cropState = getCropPanelState(currentCropSummary);
+  return {
+    flower: cropState.counts.flower,
+    unripe: cropState.counts.unripe,
+    midripe: cropState.counts.midripe,
+    ripe: cropState.counts.ripe,
+  };
+}
+
+function buildStageMixFromScore(score) {
+  const numeric = Number.isFinite(Number(score)) ? clamp(Number(score), 0, 100) : 45;
+  const centers = [
+    { id: "flower", center: 12 },
+    { id: "unripe", center: 38 },
+    { id: "midripe", center: 64 },
+    { id: "ripe", center: 90 },
+  ];
+  const raw = centers.map((stage) => ({
+    id: stage.id,
+    value: Math.max(0.02, 1 - Math.abs(numeric - stage.center) / 34),
+  }));
+  const total = raw.reduce((sum, item) => sum + item.value, 0) || 1;
+  return Object.fromEntries(raw.map((item) => [item.id, (item.value / total) * 100]));
+}
+
+function getFrameMaturityValue(frame, cropCounts = null) {
+  const harvestItem = findLayerItemForFrame("harvest_readiness", frame)
+    || findLayerItemForFrame("disease_pest_risk_v2_harvest", frame);
+  const layerValue = Number(harvestItem?.value);
+  if (Number.isFinite(layerValue)) return clamp(layerValue, 0, 100);
+
+  const counts = cropCounts || getFrameCropCounts(frame);
+  const score = computeCropMaturityScore({ counts });
+  if (score != null) return clamp(score, 0, 100);
+  return 0;
+}
+
+function getFramePestRiskValue(frame) {
+  const frameId = Number(frame?.id);
+  const detections = (currentPestDetections?.detections || [])
+    .filter((item) => Number(item.frame_id) === frameId);
+  if (detections.length) {
+    const severityScore = { high: 92, medium: 62, low: 28 };
+    return Math.max(...detections.map((item) => severityScore[item.severity] || 50));
+  }
+
+  const pestItem = findLayerItemForFrame("disease_pest_risk", frame)
+    || findLayerItemForFrame("action_priority", frame);
+  const value = Number(pestItem?.value);
+  return Number.isFinite(value) ? clamp(value, 0, 100) : 0;
+}
+
+function buildDetectionBarData(frame) {
+  if (!frame) return [];
+  const counts = getFrameCropCounts(frame);
+  const total = CROP_MAP_CHART_SERIES.reduce((sum, series) => sum + (counts[series.id] || 0), 0);
+  const maturity = getFrameMaturityValue(frame, counts);
+  const stageValues = total > 0
+    ? Object.fromEntries(CROP_MAP_CHART_SERIES.map((series) => [series.id, ((counts[series.id] || 0) / total) * 100]))
+    : buildStageMixFromScore(maturity);
+  const pestRisk = getFramePestRiskValue(frame);
+
+  return [
+    ...CROP_MAP_CHART_SERIES.map((series) => ({
+      id: series.id,
+      label: series.label,
+      value: clamp(stageValues[series.id] || 0, 0, 100),
+      color: series.color,
+      unit: "%",
+    })),
+    {
+      id: "pest",
+      label: "병충해",
+      value: pestRisk,
+      color: "#ff5b45",
+      unit: "",
+    },
+    {
+      id: "maturity",
+      label: "성숙도",
+      value: maturity,
+      color: "#30e4be",
+      unit: "",
+    },
+  ];
+}
+
+function renderDetectionBars(frame) {
+  const scope = document.getElementById("rtsDetectionScope");
+  const chart = document.getElementById("rtsDetectionChart");
+  if (!scope || !chart) return;
+  if (!frame) {
+    scope.textContent = "-";
+    chart.innerHTML = `<div class="rts-detection-empty">No target selected</div>`;
+    return;
+  }
+
+  const bars = buildDetectionBarData(frame);
+  scope.textContent = `${frame.rail_name || "-"} · ${formatMeters(frame.odom_x)}`;
+  chart.innerHTML = bars.map((bar) => {
+    const value = clamp(Number(bar.value) || 0, 0, 100);
+    return `
+      <div class="rts-detection-bar" style="--bar-color:${bar.color};--bar-value:${value.toFixed(2)}%">
+        <div class="rts-detection-track">
+          <span class="rts-detection-fill"></span>
+        </div>
+        <strong>${Math.round(value)}${bar.unit}</strong>
+        <span>${bar.label}</span>
+      </div>
+    `;
+  }).join("");
 }
 
 function setActiveMapLayer(layerId, { forceOff = false } = {}) {
@@ -2487,7 +2593,6 @@ class TileMap {
     if (showLayerOverlay) {
       this.drawLayerSegments(ctx, width, height);
     }
-    this.drawRailCropCharts(ctx, width, height);
 
     // ── Selection highlight ───────────────────────────────────────────────────
     if (this.selectedFrameId != null) {
@@ -2506,95 +2611,6 @@ class TileMap {
         ctx.fill();
       }
     }
-  }
-
-  drawRailCropCharts(ctx, width, height) {
-    const rows = getRailCropRows();
-    if (!rows.length || !this.manifest?.rails?.length) return;
-
-    const layout = this.manifest.layout;
-    const railMap = {};
-    for (const rail of this.manifest.rails) railMap[rail.name] = rail;
-
-    const rowScreenHeight = Math.abs(layout.cell_height * this.scaleY);
-    const groupSize = chooseRailCropChartGroupSize(rowScreenHeight);
-    const chartWidth = clamp(width * 0.18, 150, 220);
-    const labelWidth = groupSize === 1 ? 34 : 68;
-    const valueWidth = 42;
-    const barWidth = Math.max(48, chartWidth - labelWidth - valueWidth - 16);
-    const baseX = clamp(54, 48, Math.max(48, width - chartWidth - 18));
-    const x = Math.min(baseX, width - chartWidth - 12);
-
-    ctx.save();
-    ctx.font = '700 10px "DM Mono", "Noto Sans KR", sans-serif';
-    ctx.textBaseline = "middle";
-
-    for (let index = 0; index < rows.length; index += groupSize) {
-      const groupRows = rows.slice(index, index + groupSize);
-      const firstRail = railMap[groupRows[0]?.rail_name];
-      const lastRail = railMap[groupRows[groupRows.length - 1]?.rail_name];
-      if (!firstRail || !lastRail) continue;
-
-      const topWorld = layout.margin_y + firstRail.rail_y_m * layout.px_per_meter_y;
-      const bottomWorld = layout.margin_y + lastRail.rail_y_m * layout.px_per_meter_y + layout.cell_height;
-      const top = this.worldToScreen(this.centerX, topWorld).y;
-      const bottom = this.worldToScreen(this.centerX, bottomWorld).y;
-      const groupScreenHeight = Math.abs(bottom - top);
-      const yCenter = (top + bottom) / 2;
-      if (yCenter < -40 || yCenter > height + 40) continue;
-
-      const merged = mergeRailCropRows(groupRows);
-      if (merged.total <= 0) continue;
-
-      const chartHeight = groupSize === 1
-        ? clamp(rowScreenHeight * 0.52, 15, 24)
-        : clamp(groupScreenHeight * 0.36, 18, 28);
-      const y = clamp(yCenter - chartHeight / 2, 28, height - chartHeight - 12);
-      const radius = 5;
-
-      const label = groupSize === 1 || groupRows.length === 1
-        ? railShortLabel(groupRows[0].rail_name)
-        : `${railShortLabel(groupRows[0].rail_name)}-${railShortLabel(groupRows[groupRows.length - 1].rail_name)}`;
-
-      ctx.fillStyle = "rgba(8, 13, 10, 0.72)";
-      ctx.strokeStyle = "rgba(236, 244, 237, 0.12)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(x, y, chartWidth, chartHeight, radius);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = "rgba(236, 244, 237, 0.78)";
-      ctx.textAlign = "left";
-      ctx.fillText(label, x + 8, y + chartHeight / 2);
-
-      const barX = x + labelWidth;
-      const barY = y + Math.max(4, chartHeight * 0.28);
-      const barH = Math.max(6, chartHeight - Math.max(8, chartHeight * 0.55));
-      ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-      ctx.beginPath();
-      ctx.roundRect(barX, barY, barWidth, barH, 3);
-      ctx.fill();
-
-      let cursorX = barX;
-      for (const series of CROP_MAP_CHART_SERIES) {
-        const value = merged.counts[series.id] || 0;
-        if (value <= 0) continue;
-        const segmentWidth = Math.max(1, (value / merged.total) * barWidth);
-        ctx.fillStyle = series.color;
-        ctx.globalAlpha = 0.82;
-        ctx.fillRect(cursorX, barY, Math.min(segmentWidth, barX + barWidth - cursorX), barH);
-        ctx.globalAlpha = 1;
-        cursorX += segmentWidth;
-        if (cursorX >= barX + barWidth) break;
-      }
-
-      ctx.fillStyle = "rgba(154, 173, 159, 0.84)";
-      ctx.textAlign = "right";
-      ctx.fillText(formatCount(merged.total), x + chartWidth - 8, y + chartHeight / 2);
-    }
-
-    ctx.restore();
   }
 
   drawLayerSegments(ctx, width, height) {
@@ -3021,6 +3037,7 @@ function renderCommandInfo(frame, insights = currentInsightsData) {
     rail.textContent = "-";
     position.textContent = "-";
     status.textContent = "Awaiting selection";
+    renderDetectionBars(null);
     return;
   }
 
@@ -3031,6 +3048,7 @@ function renderCommandInfo(frame, insights = currentInsightsData) {
   status.textContent = ri
     ? `Health ${ri.health_score} · Priority ${ri.priority_score}`
     : "Telemetry nominal";
+  renderDetectionBars(frame);
 }
 
 function renderSelection(frame, insights) {

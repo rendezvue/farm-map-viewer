@@ -2892,6 +2892,8 @@ body.modal-open { overflow: hidden; }
 .rts-command-panel {
   position: relative;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   pointer-events: auto;
   border-right: 1px solid rgba(51, 191, 239, 0.46);
 }
@@ -2933,7 +2935,10 @@ body.modal-open { overflow: hidden; }
 }
 
 .rts-info-panel {
-  padding: 42px 36px 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 24px 34px 18px;
   background:
     linear-gradient(90deg, rgba(11, 31, 41, 0.96), rgba(4, 10, 15, 0.94)),
     #071219;
@@ -2949,9 +2954,9 @@ body.modal-open { overflow: hidden; }
 
 .rts-info-panel strong#rtsInfoTitle {
   display: block;
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--t1);
-  font-size: 28px;
+  font-size: 25px;
   font-weight: 800;
   line-height: 1.2;
   white-space: nowrap;
@@ -2962,8 +2967,8 @@ body.modal-open { overflow: hidden; }
 .rts-info-grid {
   display: grid;
   grid-template-columns: 108px minmax(0, 1fr);
-  gap: 12px 16px;
-  margin-top: 28px;
+  gap: 6px 16px;
+  margin-top: 12px;
   max-width: 620px;
 }
 
@@ -2978,11 +2983,121 @@ body.modal-open { overflow: hidden; }
   min-width: 0;
   color: var(--green);
   font-family: 'DM Mono', monospace;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rts-detection-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(51, 191, 239, 0.28);
+}
+
+.rts-detection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--yellow);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.rts-detection-head b {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--t3);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rts-detection-chart {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(38px, 1fr));
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.rts-detection-bar {
+  display: grid;
+  grid-template-rows: minmax(48px, 1fr) auto auto;
+  align-items: end;
+  min-width: 0;
+  gap: 5px;
+  text-align: center;
+}
+
+.rts-detection-track {
+  position: relative;
+  align-self: stretch;
+  width: 18px;
+  min-height: 48px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(38, 142, 190, 0.58);
+  background:
+    linear-gradient(180deg, rgba(4, 18, 24, 0.88), rgba(2, 8, 12, 0.94)),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 12px);
+  box-shadow:
+    inset 0 0 10px rgba(0, 0, 0, 0.46),
+    0 0 10px color-mix(in srgb, var(--bar-color) 18%, transparent);
+}
+
+.rts-detection-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-value);
+  min-height: 2px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bar-color) 82%, #ffffff 18%), var(--bar-color));
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--bar-color) 52%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.rts-detection-bar strong {
+  color: var(--t1);
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.rts-detection-bar span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--t2);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rts-detection-empty {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: var(--t3);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  text-align: center;
 }
 
 .rts-command-panel {
@@ -3238,11 +3353,41 @@ body.modal-open { overflow: hidden; }
   }
 
   .rts-info-panel {
-    padding: 32px 24px 24px;
+    padding: 24px 20px 18px;
   }
 
   .rts-info-panel strong#rtsInfoTitle {
-    font-size: 23px;
+    font-size: 21px;
+  }
+
+  .rts-info-grid {
+    grid-template-columns: 78px minmax(0, 1fr);
+    gap: 6px 10px;
+    margin-top: 12px;
+  }
+
+  .rts-detection-panel {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+
+  .rts-detection-chart {
+    grid-template-columns: repeat(6, minmax(28px, 1fr));
+    gap: 6px;
+    min-height: 84px;
+  }
+
+  .rts-detection-track {
+    width: 14px;
+    min-height: 46px;
+  }
+
+  .rts-detection-bar strong {
+    font-size: 10px;
+  }
+
+  .rts-detection-bar span {
+    font-size: 9px;
   }
 }
 
