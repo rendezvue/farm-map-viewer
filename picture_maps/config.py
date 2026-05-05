@@ -42,7 +42,7 @@ class BuildConfig:
                 str(self.rail_track_max_height),
                 str(self.margin_x),
                 str(self.margin_y),
-                "rail-track-v5-u-turn",
+                "rail-overlay-v1-no-bake",
             ]
         )
         digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]

@@ -144,7 +144,7 @@ def build_dataset(config: BuildConfig) -> dict[str, Any]:
     print(f"  [{device_name}/{session_name}] building {len(dataset['frames'])} frames on {device} ...", flush=True)
     public_frames, server_index = build_contact_sheets(config, dataset, layout, device_name, session_name, device=device)
     print(f"  [{device_name}/{session_name}] building tile pyramid ...", flush=True)
-    zooms = build_tile_pyramid(config, public_frames, dataset["rails"], layout, device=device)
+    zooms = build_tile_pyramid(config, public_frames, layout, device=device)
 
     manifest = {
         "title": f"Picture Maps - {session_name}",
@@ -308,150 +308,9 @@ def build_contact_sheets(
     return public_frames, {"dataset_dir": str(config.dataset_dir), "frames": server_frames}
 
 
-def _rail_gap_boxes(rails: list[dict[str, Any]], layout: dict[str, Any]) -> list[tuple[int, int]]:
-    ordered_rails = sorted(
-        rails,
-        key=lambda rail: (int(rail.get("column", 0) or 0), float(rail.get("rail_y_m", 0.0) or 0.0)),
-    )
-    boxes: list[tuple[int, int]] = []
-    for before, after in zip(ordered_rails, ordered_rails[1:]):
-        before_top = round(layout["margin_y"] + float(before["rail_y_m"]) * layout["px_per_meter_y"])
-        after_top = round(layout["margin_y"] + float(after["rail_y_m"]) * layout["px_per_meter_y"])
-        gap_top = before_top + layout["cell_height"]
-        gap_bottom = after_top
-        if gap_bottom - gap_top >= 12:
-            boxes.append((gap_top, gap_bottom))
-    return boxes
-
-
-def _track_x_bounds(frames: list[dict[str, Any]], layout: dict[str, Any], width: int) -> tuple[int, int]:
-    if frames:
-        left = min(int(frame["rect_px"]["left"]) for frame in frames)
-        right = max(int(frame["rect_px"]["right"]) for frame in frames)
-        pad = max(24, int(layout.get("gap_x", 0)) // 2)
-        return max(12, left - pad), min(width - 12, right + pad)
-    return int(layout["margin_x"]), max(int(layout["margin_x"]) + 24, width - int(layout["margin_x"]))
-
-
-def _render_rail_strip(
-    config: BuildConfig,
-    width: int,
-    gap_height: int,
-    track_x: tuple[int, int],
-    *,
-    margin_y: int | None = None,
-    max_rail_height: int | None = None,
-) -> Image.Image:
-    strip = Image.new("RGB", (width, gap_height), config.background)
-    if gap_height <= 0:
-        return strip
-
-    resolved_margin_y = config.rail_track_margin_y if margin_y is None else margin_y
-    resolved_margin_y = max(0, min(resolved_margin_y, (gap_height - 4) // 2))
-    available_h = gap_height - resolved_margin_y * 2
-    if available_h < 4:
-        return strip
-
-    rail_h = min(max_rail_height or config.rail_track_max_height, max(4, available_h))
-    y0 = (gap_height - rail_h) // 2
-    y1 = y0 + rail_h
-    x0, x1 = track_x
-    if x1 - x0 < 40:
-        return strip
-
-    draw = ImageDraw.Draw(strip)
-    stroke_width = max(2, min(12, round(rail_h * 0.13)))
-    top_y = y0 + stroke_width / 2
-    bottom_y = y1 - stroke_width / 2
-    center_y = (top_y + bottom_y) / 2
-    radius = max(2, (bottom_y - top_y) / 2)
-    turn_right_x = x0 + radius
-    rail_color = "#c6d0cc"
-    shadow_color = "#17221f"
-
-    guide_width = max(1, stroke_width // 4)
-    draw.line((0, center_y, width, center_y), fill="#6d7772", width=guide_width)
-
-    shadow_offset = max(1, stroke_width // 5)
-    shadow_bbox = (
-        x0 + shadow_offset,
-        top_y + shadow_offset,
-        x0 + radius * 2 + shadow_offset,
-        bottom_y + shadow_offset,
-    )
-    draw.arc(shadow_bbox, 90, 270, fill=shadow_color, width=stroke_width)
-    draw.line((turn_right_x, top_y + shadow_offset, x1, top_y + shadow_offset), fill=shadow_color, width=stroke_width)
-    draw.line((turn_right_x, bottom_y + shadow_offset, x1, bottom_y + shadow_offset), fill=shadow_color, width=stroke_width)
-
-    arc_bbox = (x0, top_y, x0 + radius * 2, bottom_y)
-    draw.arc(arc_bbox, 90, 270, fill=rail_color, width=stroke_width)
-    draw.line((turn_right_x, top_y, x1, top_y), fill=rail_color, width=stroke_width)
-    draw.line((turn_right_x, bottom_y, x1, bottom_y), fill=rail_color, width=stroke_width)
-
-    return strip
-
-
-def _paint_rail_strips(
-    canvas: torch.Tensor,
-    config: BuildConfig,
-    frames: list[dict[str, Any]],
-    rails: list[dict[str, Any]],
-    layout: dict[str, Any],
-    device: torch.device,
-    *,
-    source_size: tuple[int, int] | None = None,
-    min_strip_height: int = 0,
-) -> None:
-    if len(rails) < 2 or config.gap_y <= 0:
-        return
-
-    _, height, width = canvas.shape
-    source_width, source_height = source_size or (width, height)
-    scale_x = width / max(1, source_width)
-    scale_y = height / max(1, source_height)
-    source_track_x = _track_x_bounds(frames, layout, source_width)
-    track_x = (
-        max(0, min(width, round(source_track_x[0] * scale_x))),
-        max(0, min(width, round(source_track_x[1] * scale_x))),
-    )
-    strip_cache: dict[int, torch.Tensor] = {}
-    for gap_top, gap_bottom in _rail_gap_boxes(rails, layout):
-        scaled_center = (gap_top + gap_bottom) * 0.5 * scale_y
-        scaled_gap_h = max(1, round((gap_bottom - gap_top) * scale_y))
-        strip_h = max(scaled_gap_h, min_strip_height)
-        strip_h = min(strip_h, height)
-        scaled_top = round(scaled_center - strip_h / 2)
-        scaled_bottom = scaled_top + strip_h
-        if scaled_top < 0:
-            scaled_bottom -= scaled_top
-            scaled_top = 0
-        if scaled_bottom > height:
-            scaled_top -= scaled_bottom - height
-            scaled_bottom = height
-        scaled_top = max(0, scaled_top)
-        scaled_bottom = min(height, scaled_bottom)
-        strip_h = scaled_bottom - scaled_top
-        if strip_h <= 0:
-            continue
-        strip_tensor = strip_cache.get(strip_h)
-        if strip_tensor is None:
-            strip = _render_rail_strip(
-                config,
-                width,
-                strip_h,
-                track_x,
-                margin_y=round(config.rail_track_margin_y * scale_y),
-                max_rail_height=max(8, round(config.rail_track_max_height * scale_y)),
-            )
-            strip_tensor = TF.to_tensor(strip).to(device)
-            strip_cache[strip_h] = strip_tensor
-        canvas[:, scaled_top:scaled_bottom, :] = strip_tensor[:, :strip_h, :]
-
-
 def build_tile_pyramid(
     config: BuildConfig,
     frames: list[dict[str, Any]],
-    rails: list[dict[str, Any]],
     layout: dict[str, Any],
     device: torch.device = DEVICE,
 ) -> dict[str, Any]:
@@ -461,7 +320,6 @@ def build_tile_pyramid(
     bg = torch.tensor([c / 255.0 for c in bg_rgb], dtype=torch.float32, device=device).view(3, 1, 1)
 
     canvas = bg.expand(3, H, W).clone()
-    _paint_rail_strips(canvas, config, frames, rails, layout, device, source_size=(W, H))
 
     for frame in frames:
         cell_path = config.cells_dir / f'{frame["id"]:05d}.jpg'
@@ -538,16 +396,6 @@ def build_tile_pyramid(
         current_height = new_height
 
         zoom_canvas = downsampled.squeeze(0)
-        _paint_rail_strips(
-            zoom_canvas,
-            config,
-            frames,
-            rails,
-            layout,
-            device,
-            source_size=(W, H),
-            min_strip_height=config.rail_track_min_tile_height,
-        )
         for ty in range(parent_tiles_y):
             for tx in range(parent_tiles_x):
                 x0, y0 = tx * ts, ty * ts

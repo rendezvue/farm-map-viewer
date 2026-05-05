@@ -786,6 +786,7 @@ class TileMap {
     this.manifest = manifest;
     this.frames = frames;
     this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
+    this.railTrackWorldBounds = this.computeRailTrackWorldBounds();
     this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
@@ -963,6 +964,36 @@ class TileMap {
   get viewportWidth() { return this.container.clientWidth; }
   get viewportHeight() { return this.container.clientHeight; }
   get baseScale() { return Math.min(this.scaleX, this.scaleY); }
+
+  computeRailTrackWorldBounds() {
+    const layout = this.manifest.layout || {};
+    if (!this.frames.length) {
+      const marginX = Number(layout.margin_x) || 0;
+      return {
+        left: marginX,
+        right: Math.max(marginX, this.manifest.image_width - marginX),
+      };
+    }
+
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    for (const frame of this.frames) {
+      const rect = frame.rect_px;
+      if (!rect) continue;
+      left = Math.min(left, rect.left);
+      right = Math.max(right, rect.right);
+    }
+
+    if (!Number.isFinite(left) || !Number.isFinite(right)) {
+      return { left: 0, right: this.manifest.image_width };
+    }
+
+    const pad = Math.max(24, Math.round((Number(layout.gap_x) || 0) / 2));
+    return {
+      left: clamp(left - pad, 0, this.manifest.image_width),
+      right: clamp(right + pad, 0, this.manifest.image_width),
+    };
+  }
 
   updateViewTransform() {
     const tileZoom = clamp(Math.round(this.currentZoom), this.manifest.min_zoom, this.manifest.max_zoom);
@@ -1522,6 +1553,106 @@ class TileMap {
     return currentInsights.frames?.[String(frameId)] || null;
   }
 
+  drawRailTrackStroke(ctx, { x0, x1, centerY, railH, width }) {
+    if (x1 < -40 || x0 > width + 40 || x1 - x0 < 32 || railH < 4) return;
+
+    const strokeWidth = clamp(Math.round(railH * 0.13), 2, 12);
+    const topY = centerY - railH / 2 + strokeWidth / 2;
+    const bottomY = centerY + railH / 2 - strokeWidth / 2;
+    const radius = Math.max(2, (bottomY - topY) / 2);
+    const turnRightX = x0 + radius;
+    const lineStartX = Math.max(turnRightX - strokeWidth * 0.5, -200);
+    const lineEndX = Math.min(x1, width + 200);
+    const arcVisible = x0 < width + 200 && x0 + radius * 2 > -200;
+
+    ctx.save();
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "round";
+
+    ctx.strokeStyle = "rgba(198, 208, 204, 0.42)";
+    ctx.lineWidth = Math.max(1, Math.round(strokeWidth * 0.25));
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.stroke();
+
+    const drawPath = (offsetX, offsetY) => {
+      ctx.beginPath();
+      if (arcVisible) {
+        ctx.arc(x0 + radius + offsetX, centerY + offsetY, radius, Math.PI * 0.5, Math.PI * 1.5);
+      }
+      if (lineEndX > lineStartX) {
+        ctx.moveTo(lineStartX + offsetX, topY + offsetY);
+        ctx.lineTo(lineEndX + offsetX, topY + offsetY);
+        ctx.moveTo(lineStartX + offsetX, bottomY + offsetY);
+        ctx.lineTo(lineEndX + offsetX, bottomY + offsetY);
+      }
+      ctx.stroke();
+    };
+
+    const shadowOffset = Math.max(1, strokeWidth * 0.18);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.62)";
+    ctx.lineWidth = strokeWidth;
+    drawPath(shadowOffset, shadowOffset);
+
+    ctx.strokeStyle = "rgba(198, 208, 204, 0.96)";
+    ctx.lineWidth = strokeWidth;
+    drawPath(0, 0);
+    ctx.restore();
+  }
+
+  drawRailTrackOverlay(ctx, width, height) {
+    const layout = this.manifest.layout;
+    const rails = this.manifest.rails;
+    if (!layout || !Array.isArray(rails) || rails.length < 2) return;
+
+    const orderedRails = [...rails].sort((a, b) => {
+      const colA = Number(a.column) || 0;
+      const colB = Number(b.column) || 0;
+      if (colA !== colB) return colA - colB;
+      return (Number(a.rail_y_m) || 0) - (Number(b.rail_y_m) || 0);
+    });
+
+    const leftScreen = this.worldToScreen(this.railTrackWorldBounds.left, this.centerY).x;
+    const rightScreen = this.worldToScreen(this.railTrackWorldBounds.right, this.centerY).x;
+    const minRailH = Number(layout.rail_track_min_tile_height) || 20;
+    const maxRailWorldH = Number(layout.rail_track_max_height) || 84;
+    const marginWorldH = Number(layout.rail_track_margin_y) || 30;
+
+    for (let index = 0; index < orderedRails.length - 1; index += 1) {
+      const before = orderedRails[index];
+      const after = orderedRails[index + 1];
+      const beforeTopWorld = layout.margin_y + before.rail_y_m * layout.px_per_meter_y;
+      const afterTopWorld = layout.margin_y + after.rail_y_m * layout.px_per_meter_y;
+      const gapTopWorld = beforeTopWorld + layout.cell_height;
+      const gapBottomWorld = afterTopWorld;
+      if (gapBottomWorld <= gapTopWorld) continue;
+
+      const screenGapTop = this.worldToScreen(this.centerX, gapTopWorld).y;
+      const screenGapBottom = this.worldToScreen(this.centerX, gapBottomWorld).y;
+      const top = Math.min(screenGapTop, screenGapBottom);
+      const bottom = Math.max(screenGapTop, screenGapBottom);
+      if (bottom < -80 || top > height + 80) continue;
+
+      const gapH = bottom - top;
+      if (gapH < 6) continue;
+
+      const marginH = clamp(marginWorldH * this.scaleY, gapH < 30 ? 1 : 4, Math.max(1, (gapH - 4) / 2));
+      const availableH = gapH - marginH * 2;
+      if (availableH < 4) continue;
+
+      const scaledMaxH = Math.max(4, maxRailWorldH * this.scaleY);
+      const railH = Math.max(Math.min(availableH, minRailH), Math.min(availableH, scaledMaxH));
+      this.drawRailTrackStroke(ctx, {
+        x0: leftScreen,
+        x1: rightScreen,
+        centerY: (top + bottom) / 2,
+        railH,
+        width,
+      });
+    }
+  }
+
   drawOverlay() {
     const dpr = window.devicePixelRatio || 1;
     const width = this.viewportWidth;
@@ -1536,6 +1667,8 @@ class TileMap {
 
     const scale = this.baseScale;
     const rails = this.manifest.rails;
+
+    this.drawRailTrackOverlay(ctx, width, height);
 
     // ── Rail separators + risk highlight ──────────────────────────────────────
     for (const rail of rails) {
