@@ -52,8 +52,8 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rail-spacing", default=3.0, type=float)
     parser.add_argument("--cell-width", default=320, type=int)
     parser.add_argument("--cell-height", default=180, type=int)
-    parser.add_argument("--gap-y", default=144, type=int, help="vertical gap between rail photo rows")
-    parser.add_argument("--rail-track-margin-y", default=30, type=int, help="minimum vertical margin between photos and generated rail track")
+    parser.add_argument("--gap-y", default=264, type=int, help="vertical gap between rail photo rows")
+    parser.add_argument("--rail-track-margin-y", default=90, type=int, help="minimum vertical margin between photos and generated rail track")
     parser.add_argument("--rail-track-min-tile-height", default=20, type=int, help="minimum rail band height in each generated zoom tile")
     parser.add_argument("--rail-track-max-height", default=84, type=int, help="maximum rail body height at the source zoom level")
 

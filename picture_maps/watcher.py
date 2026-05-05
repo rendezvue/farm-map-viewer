@@ -185,8 +185,8 @@ class SessionWatcher:
         rail_spacing: float = 3.0,
         cell_width: int = 320,
         cell_height: int = 180,
-        gap_y: int = 144,
-        rail_track_margin_y: int = 30,
+        gap_y: int = 264,
+        rail_track_margin_y: int = 90,
         rail_track_min_tile_height: int = 20,
         rail_track_max_height: int = 84,
     ):

@@ -1569,12 +1569,10 @@ class TileMap {
     ctx.lineCap = "butt";
     ctx.lineJoin = "round";
 
-    ctx.strokeStyle = "rgba(198, 208, 204, 0.42)";
-    ctx.lineWidth = Math.max(1, Math.round(strokeWidth * 0.25));
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
+    const guideWidth = Math.max(1, Math.round(strokeWidth * 0.25));
+    const guideY = Math.round(centerY - guideWidth / 2);
+    ctx.fillStyle = "rgba(198, 208, 204, 0.42)";
+    ctx.fillRect(0, guideY, width, guideWidth);
 
     const drawPath = (offsetX, offsetY) => {
       ctx.beginPath();
@@ -1601,6 +1599,110 @@ class TileMap {
     ctx.restore();
   }
 
+  drawRailTrackConnector(ctx, { x0, tracks, width, height }) {
+    if (!tracks.length) return;
+    const sortedTracks = [...tracks].sort((a, b) => a.centerY - b.centerY);
+    if (sortedTracks.length < 2) return;
+    const visibleTracks = sortedTracks.filter((track) => track.centerY > -120 && track.centerY < height + 120);
+    if (!visibleTracks.length) return;
+
+    const avgRailH = visibleTracks.reduce((sum, track) => sum + track.railH, 0) / visibleTracks.length;
+    const trackGaps = [];
+    for (let index = 1; index < sortedTracks.length; index += 1) {
+      const gap = Math.abs(sortedTracks[index].centerY - sortedTracks[index - 1].centerY);
+      if (gap > 0.5) trackGaps.push(gap);
+    }
+    trackGaps.sort((a, b) => a - b);
+    const trackGap = trackGaps.length ? trackGaps[Math.floor(trackGaps.length / 2)] : avgRailH * 4;
+    const baseConnectorOffset = Math.max(4, Math.round(trackGap * 0.13));
+    const laneGap = Math.max(2, Math.round(baseConnectorOffset * 3.2));
+    const railClearance = Math.max(4, Math.round(trackGap * 0.04));
+    const connectorOffset = Math.max(baseConnectorOffset, laneGap + railClearance);
+    const railJoinGap = Math.max(1, Math.round(connectorOffset * 0.08));
+    const solidWidth = clamp(Math.round(avgRailH * 0.055), 2, 5);
+    const dashWidth = Math.max(1, solidWidth - 1);
+    const snapLine = (value, widthPx) => Math.round(value) + (Math.round(widthPx) % 2 ? 0.5 : 0);
+    const solidX = snapLine(x0 - connectorOffset, solidWidth);
+    const dashedX = snapLine(solidX + laneGap, dashWidth);
+    const branchEndX = snapLine(x0 - railJoinGap, solidWidth);
+    const branchStartX = Math.min(solidX, dashedX);
+    if (branchStartX > width + 80 || branchEndX < -80) return;
+
+    const topY = snapLine(sortedTracks[0].centerY, solidWidth);
+    const bottomY = snapLine(sortedTracks[sortedTracks.length - 1].centerY, solidWidth);
+    const railColor = "rgba(198, 208, 204, 0.82)";
+    const shadowColor = "rgba(0, 0, 0, 0.64)";
+
+    ctx.save();
+    ctx.setLineDash([]);
+
+    const px = (value) => Math.round(value);
+    const rectV = ({ x, y0, y1, widthPx, color, offsetX = 0, offsetY = 0 }) => {
+      const w = Math.max(1, px(widthPx));
+      const left = px(x + offsetX - w / 2);
+      const top = px(Math.min(y0, y1) + offsetY);
+      const h = Math.max(1, px(Math.abs(y1 - y0)));
+      ctx.fillStyle = color;
+      ctx.fillRect(left, top, w, h);
+    };
+    const rectH = ({ x0, x1, y, widthPx, color, offsetX = 0, offsetY = 0 }) => {
+      const w = Math.max(1, px(widthPx));
+      const left = px(Math.min(x0, x1) + offsetX);
+      const top = px(y + offsetY - w / 2);
+      const len = Math.max(1, px(Math.abs(x1 - x0)));
+      ctx.fillStyle = color;
+      ctx.fillRect(left, top, len, w);
+    };
+    const dashedV = ({ x, y0, y1, widthPx, color, offsetX = 0, offsetY = 0 }) => {
+      const w = Math.max(1, px(widthPx));
+      const dash = Math.max(4, w * 2);
+      const gap = Math.max(5, w * 3);
+      const start = px(Math.min(y0, y1));
+      const end = px(Math.max(y0, y1));
+      ctx.fillStyle = color;
+      for (let y = start; y <= end; y += dash + gap) {
+        const h = Math.min(dash, end - y + 1);
+        ctx.fillRect(px(x + offsetX - w / 2), px(y + offsetY), w, Math.max(1, h));
+      }
+    };
+    const dashedH = ({ x0, x1, y, widthPx, color, offsetX = 0, offsetY = 0 }) => {
+      const w = Math.max(1, px(widthPx));
+      const dash = Math.max(4, w * 2);
+      const gap = Math.max(5, w * 3);
+      const start = px(Math.min(x0, x1));
+      const end = px(Math.max(x0, x1));
+      ctx.fillStyle = color;
+      for (let x = start; x <= end; x += dash + gap) {
+        const len = Math.min(dash, end - x + 1);
+        ctx.fillRect(px(x + offsetX), px(y + offsetY - w / 2), Math.max(1, len), w);
+      }
+    };
+
+    const shadowOffset = Math.max(1, px(solidWidth * 0.35));
+    rectV({ x: solidX, y0: topY, y1: bottomY, widthPx: solidWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
+    rectV({ x: solidX, y0: topY, y1: bottomY, widthPx: solidWidth, color: railColor });
+    dashedV({ x: dashedX, y0: topY, y1: bottomY, widthPx: dashWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
+    dashedV({ x: dashedX, y0: topY, y1: bottomY, widthPx: dashWidth, color: "rgba(198, 208, 204, 0.62)" });
+
+    for (const track of visibleTracks) {
+      const centerSolidY = snapLine(track.centerY, solidWidth);
+      const centerDashedY = snapLine(track.centerY, dashWidth);
+
+      rectH({ x0: solidX, x1: branchEndX, y: centerSolidY, widthPx: solidWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
+      rectH({ x0: solidX, x1: branchEndX, y: centerSolidY, widthPx: solidWidth, color: railColor });
+      dashedH({ x0: dashedX, x1: branchEndX, y: centerDashedY, widthPx: dashWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
+      dashedH({ x0: dashedX, x1: branchEndX, y: centerDashedY, widthPx: dashWidth, color: "rgba(198, 208, 204, 0.66)" });
+
+      ctx.fillStyle = "rgba(198, 208, 204, 0.9)";
+      const nodeR = clamp(Math.round(solidWidth * 1.2), 2, 4);
+      ctx.beginPath();
+      ctx.roundRect(solidX - nodeR, centerSolidY - nodeR, nodeR * 2, nodeR * 2, 1.5);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
   drawRailTrackOverlay(ctx, width, height) {
     const layout = this.manifest.layout;
     const rails = this.manifest.rails;
@@ -1618,6 +1720,7 @@ class TileMap {
     const minRailH = Number(layout.rail_track_min_tile_height) || 20;
     const maxRailWorldH = Number(layout.rail_track_max_height) || 84;
     const marginWorldH = Number(layout.rail_track_margin_y) || 30;
+    const trackDraws = [];
 
     for (let index = 0; index < orderedRails.length - 1; index += 1) {
       const before = orderedRails[index];
@@ -1643,13 +1746,23 @@ class TileMap {
 
       const scaledMaxH = Math.max(4, maxRailWorldH * this.scaleY);
       const railH = Math.max(Math.min(availableH, minRailH), Math.min(availableH, scaledMaxH));
-      this.drawRailTrackStroke(ctx, {
+      trackDraws.push({
         x0: leftScreen,
         x1: rightScreen,
         centerY: (top + bottom) / 2,
         railH,
         width,
       });
+    }
+
+    this.drawRailTrackConnector(ctx, {
+      x0: leftScreen,
+      tracks: trackDraws,
+      width,
+      height,
+    });
+    for (const trackDraw of trackDraws) {
+      this.drawRailTrackStroke(ctx, trackDraw);
     }
   }
 
