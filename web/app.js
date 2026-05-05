@@ -219,6 +219,17 @@ function buildCropSeriesData(cropState) {
   }));
 }
 
+function computeCropMaturityScore(cropState) {
+  const counts = cropState?.counts || {};
+  const flower = toCropCount(counts.flower);
+  const unripe = toCropCount(counts.unripe);
+  const midripe = toCropCount(counts.midripe);
+  const ripe = toCropCount(counts.ripe);
+  const total = flower + unripe + midripe + ripe;
+  if (!total) return null;
+  return ((flower * 0.25 + unripe * 0.45 + midripe * 0.75 + ripe) / total) * 100;
+}
+
 function getRailCropRows(summary = currentCropSummary) {
   const rows = summary?.rail_crop?.available && Array.isArray(summary.rail_crop.rails)
     ? summary.rail_crop.rails
@@ -445,12 +456,25 @@ function renderCropPanel(summary = currentCropSummary) {
 function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState())) {
   const legend = document.getElementById("mapCropLegend");
   if (!legend) return;
-  legend.innerHTML = seriesData.map((series) => `
-    <span class="map-legend-item">
-      <span class="map-legend-dot" style="background:${series.color}"></span>
-      ${series.label}
-    </span>
-  `).join("");
+  const cropState = getCropPanelState();
+  const maturityScore = computeCropMaturityScore(cropState);
+  legend.innerHTML = `
+    <div class="map-crop-metrics">
+      ${seriesData.map((series) => `
+        <div class="map-crop-metric" style="--metric-color:${series.color}">
+          <span class="map-crop-metric-label">
+            <span class="map-crop-metric-dot"></span>
+            ${series.label}
+          </span>
+          <strong>${formatCount(series.value)}</strong>
+        </div>
+      `).join("")}
+    </div>
+    <div class="map-maturity-card">
+      <span>성숙도</span>
+      <strong>${maturityScore == null ? "-" : maturityScore.toFixed(1)}</strong>
+    </div>
+  `;
 }
 
 // ─── Device / session store ──────────────────────────────────────────────────
@@ -3506,8 +3530,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
   const mapSessionChip = document.getElementById("mapSessionChip");
   if (mapSessionChip) {
-    mapSessionChip.textContent =
-      `${deviceName}/${sessionName} · ${manifest.summary.rail_count} rails · ${manifest.summary.frame_count.toLocaleString()} frames`;
+    mapSessionChip.textContent = `생육 분석 · ${sessionName}`;
   }
   renderCropPanel(currentCropSummary);
 
