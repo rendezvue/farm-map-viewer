@@ -33,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=120,
         help="seconds between NAS scans for new sessions (default: 120)",
     )
+    serve_sub.add_argument(
+        "--no-watch",
+        action="store_true",
+        help="serve only already selected/built sessions without background scanning",
+    )
     return parser
 
 
@@ -47,6 +52,10 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rail-spacing", default=3.0, type=float)
     parser.add_argument("--cell-width", default=320, type=int)
     parser.add_argument("--cell-height", default=180, type=int)
+    parser.add_argument("--gap-y", default=144, type=int, help="vertical gap between rail photo rows")
+    parser.add_argument("--rail-track-margin-y", default=30, type=int, help="minimum vertical margin between photos and generated rail track")
+    parser.add_argument("--rail-track-min-tile-height", default=20, type=int, help="minimum rail band height in each generated zoom tile")
+    parser.add_argument("--rail-track-max-height", default=84, type=int, help="maximum rail body height at the source zoom level")
 
 
 def make_config(dataset_dir: Path, args: argparse.Namespace) -> BuildConfig:
@@ -56,6 +65,10 @@ def make_config(dataset_dir: Path, args: argparse.Namespace) -> BuildConfig:
         rail_spacing_m=args.rail_spacing,
         cell_width=args.cell_width,
         cell_height=args.cell_height,
+        gap_y=args.gap_y,
+        rail_track_margin_y=args.rail_track_margin_y,
+        rail_track_min_tile_height=args.rail_track_min_tile_height,
+        rail_track_max_height=args.rail_track_max_height,
     )
 
 
@@ -97,22 +110,31 @@ def main() -> None:
                     rail_spacing_m=args.rail_spacing,
                     cell_width=args.cell_width,
                     cell_height=args.cell_height,
+                    gap_y=args.gap_y,
+                    rail_track_margin_y=args.rail_track_margin_y,
+                    rail_track_min_tile_height=args.rail_track_min_tile_height,
+                    rail_track_max_height=args.rail_track_max_height,
                 )
                 if config.manifest_path.exists():
                     sessions[(device, session)] = SessionData(config)
 
-            # 백그라운드 watcher 시작 (새 세션 감지 + 빌드)
-            watcher = SessionWatcher(
-                db_root=db_root,
-                build_root=build_root,
-                sessions=sessions,
-                lock=lock,
-                scan_interval=args.scan_interval,
-                rail_spacing=args.rail_spacing,
-                cell_width=args.cell_width,
-                cell_height=args.cell_height,
-            )
-            watcher.start()
+            if not args.no_watch:
+                # 백그라운드 watcher 시작 (새 세션 감지 + 빌드)
+                watcher = SessionWatcher(
+                    db_root=db_root,
+                    build_root=build_root,
+                    sessions=sessions,
+                    lock=lock,
+                    scan_interval=args.scan_interval,
+                    rail_spacing=args.rail_spacing,
+                    cell_width=args.cell_width,
+                    cell_height=args.cell_height,
+                    gap_y=args.gap_y,
+                    rail_track_margin_y=args.rail_track_margin_y,
+                    rail_track_min_tile_height=args.rail_track_min_tile_height,
+                    rail_track_max_height=args.rail_track_max_height,
+                )
+                watcher.start()
 
         else:
             dataset_dir = args.dataset.expanduser().resolve()
@@ -121,17 +143,26 @@ def main() -> None:
             config = make_config(dataset_dir, args)
             device = dataset_dir.parent.name
             session = dataset_dir.name
-            if config.manifest_path.exists():
-                sessions[(device, session)] = SessionData(config)
-            # 단일 세션도 watcher로 관리
-            watcher = SessionWatcher(
-                db_root=dataset_dir.parent.parent,
-                build_root=build_root,
-                sessions=sessions,
-                lock=lock,
-                scan_interval=args.scan_interval,
-            )
-            watcher.start()
+            if not config.manifest_path.exists():
+                build_dataset(config)
+            sessions[(device, session)] = SessionData(config)
+            if not args.no_watch:
+                # 단일 세션도 watcher로 관리
+                watcher = SessionWatcher(
+                    db_root=dataset_dir.parent.parent,
+                    build_root=build_root,
+                    sessions=sessions,
+                    lock=lock,
+                    scan_interval=args.scan_interval,
+                    rail_spacing=args.rail_spacing,
+                    cell_width=args.cell_width,
+                    cell_height=args.cell_height,
+                    gap_y=args.gap_y,
+                    rail_track_margin_y=args.rail_track_margin_y,
+                    rail_track_min_tile_height=args.rail_track_min_tile_height,
+                    rail_track_max_height=args.rail_track_max_height,
+                )
+                watcher.start()
 
         serve(sessions, lock, host=args.host, port=args.port, web_root=web_root)
         return

@@ -19,10 +19,13 @@ class BuildConfig:
     cell_width: int = 320
     cell_height: int = 180
     gap_x: int = 24
-    gap_y: int = 12
+    gap_y: int = 144
+    rail_track_margin_y: int = 30
+    rail_track_min_tile_height: int = 20
+    rail_track_max_height: int = 84
     margin_x: int = 160
     margin_y: int = 140
-    background: str = "#f3f1e7"
+    background: str = "#050505"
 
     @property
     def dataset_key(self) -> str:
@@ -34,8 +37,12 @@ class BuildConfig:
                 str(self.cell_height),
                 str(self.gap_x),
                 str(self.gap_y),
+                str(self.rail_track_margin_y),
+                str(self.rail_track_min_tile_height),
+                str(self.rail_track_max_height),
                 str(self.margin_x),
                 str(self.margin_y),
+                "rail-track-v5-u-turn",
             ]
         )
         digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]

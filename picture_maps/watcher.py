@@ -115,6 +115,10 @@ def _watcher_process(
     rail_spacing: float,
     cell_width: int,
     cell_height: int,
+    gap_y: int,
+    rail_track_margin_y: int,
+    rail_track_min_tile_height: int,
+    rail_track_max_height: int,
 ) -> None:
     """별도 프로세스에서 실행 - GIL 완전 분리."""
     # 임포트를 여기서 해야 spawn 방식에서 안전
@@ -127,6 +131,10 @@ def _watcher_process(
             rail_spacing_m=rail_spacing,
             cell_width=cell_width,
             cell_height=cell_height,
+            gap_y=gap_y,
+            rail_track_margin_y=rail_track_margin_y,
+            rail_track_min_tile_height=rail_track_min_tile_height,
+            rail_track_max_height=rail_track_max_height,
         )
 
     print(f"[watcher] process started (pid={__import__('os').getpid()}, scan every {scan_interval}s)", flush=True)
@@ -177,6 +185,10 @@ class SessionWatcher:
         rail_spacing: float = 3.0,
         cell_width: int = 320,
         cell_height: int = 180,
+        gap_y: int = 144,
+        rail_track_margin_y: int = 30,
+        rail_track_min_tile_height: int = 20,
+        rail_track_max_height: int = 84,
     ):
         self.db_root = db_root
         self.build_root = build_root
@@ -186,12 +198,28 @@ class SessionWatcher:
         self.rail_spacing = rail_spacing
         self.cell_width = cell_width
         self.cell_height = cell_height
+        self.gap_y = gap_y
+        self.rail_track_margin_y = rail_track_margin_y
+        self.rail_track_min_tile_height = rail_track_min_tile_height
+        self.rail_track_max_height = rail_track_max_height
 
         ctx = multiprocessing.get_context("spawn")
         self._queue: multiprocessing.Queue = ctx.Queue()
         self._process = ctx.Process(
             target=_watcher_process,
-            args=(db_root, build_root, self._queue, scan_interval, rail_spacing, cell_width, cell_height),
+            args=(
+                db_root,
+                build_root,
+                self._queue,
+                scan_interval,
+                rail_spacing,
+                cell_width,
+                cell_height,
+                gap_y,
+                rail_track_margin_y,
+                rail_track_min_tile_height,
+                rail_track_max_height,
+            ),
             daemon=True,
             name="session-watcher",
         )
@@ -225,6 +253,10 @@ class SessionWatcher:
                     rail_spacing_m=self.rail_spacing,
                     cell_width=self.cell_width,
                     cell_height=self.cell_height,
+                    gap_y=self.gap_y,
+                    rail_track_margin_y=self.rail_track_margin_y,
+                    rail_track_min_tile_height=self.rail_track_min_tile_height,
+                    rail_track_max_height=self.rail_track_max_height,
                 )
                 data = SessionData(config)
                 with self.lock:

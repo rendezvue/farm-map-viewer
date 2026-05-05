@@ -13,6 +13,10 @@ SCAN_INTERVAL="${SCAN_INTERVAL:-99999}"
 RAIL_SPACING="${RAIL_SPACING:-3.0}"
 CELL_WIDTH="${CELL_WIDTH:-320}"
 CELL_HEIGHT="${CELL_HEIGHT:-180}"
+GAP_Y="${GAP_Y:-144}"
+RAIL_TRACK_MARGIN_Y="${RAIL_TRACK_MARGIN_Y:-30}"
+RAIL_TRACK_MIN_TILE_HEIGHT="${RAIL_TRACK_MIN_TILE_HEIGHT:-20}"
+RAIL_TRACK_MAX_HEIGHT="${RAIL_TRACK_MAX_HEIGHT:-84}"
 RESTART_DELAY="${RESTART_DELAY:-3}"
 
 mkdir -p "$LOG_DIR"
@@ -45,7 +49,11 @@ while true; do
       --scan-interval "$SCAN_INTERVAL" \
       --rail-spacing "$RAIL_SPACING" \
       --cell-width "$CELL_WIDTH" \
-      --cell-height "$CELL_HEIGHT"
+      --cell-height "$CELL_HEIGHT" \
+      --gap-y "$GAP_Y" \
+      --rail-track-margin-y "$RAIL_TRACK_MARGIN_Y" \
+      --rail-track-min-tile-height "$RAIL_TRACK_MIN_TILE_HEIGHT" \
+      --rail-track-max-height "$RAIL_TRACK_MAX_HEIGHT"
   ) >>"$LOG_FILE" 2>&1 &
 
   child_pid="$!"
