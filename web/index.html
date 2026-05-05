@@ -117,10 +117,7 @@
               <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
               <div id="segmentTooltip" class="segment-tooltip" hidden></div>
               <div class="map-topline">
-                <div class="map-detection-bar">
-                  <div class="map-session-chip" id="mapSessionChip">생육 분석</div>
-                  <div class="map-crop-legend" id="mapCropLegend"></div>
-                </div>
+                <div class="map-resource-hud" id="mapCropLegend"></div>
               </div>
               <div class="map-control-stack" aria-label="지도 컨트롤">
                 <button id="mapZoomIn" class="map-icon-btn" type="button" aria-label="확대">+</button>
@@ -135,6 +132,27 @@
                 <div class="hud-card">
                   <span class="hud-label">Scale</span>
                   <strong id="scaleValue">-</strong>
+                </div>
+              </div>
+              <div class="rts-command-console" aria-label="전술 지휘 콘솔">
+                <div class="rts-minimap-panel">
+                  <canvas id="rtsMiniMapCanvas" class="rts-minimap-canvas"></canvas>
+                  <div class="rts-panel-caption">TACTICAL MAP</div>
+                </div>
+                <div class="rts-info-panel" id="rtsInfoPanel">
+                  <div class="rts-info-kicker">SELECTED TARGET</div>
+                  <strong id="rtsInfoTitle">-</strong>
+                  <div class="rts-info-grid">
+                    <span>Rail</span><b id="rtsInfoRail">-</b>
+                    <span>Position</span><b id="rtsInfoPosition">-</b>
+                    <span>Status</span><b id="rtsInfoStatus">Awaiting data</b>
+                  </div>
+                </div>
+                <div class="rts-command-panel" aria-hidden="true">
+                  <div class="rts-command-slot is-active"></div>
+                  <div class="rts-command-slot"></div>
+                  <div class="rts-command-slot"></div>
+                  <div class="rts-command-slot"></div>
                 </div>
               </div>
             </div>

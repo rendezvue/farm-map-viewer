@@ -458,23 +458,22 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
   if (!legend) return;
   const cropState = getCropPanelState();
   const maturityScore = computeCropMaturityScore(cropState);
-  legend.innerHTML = `
-    <div class="map-crop-metrics">
-      ${seriesData.map((series) => `
-        <div class="map-crop-metric" style="--metric-color:${series.color}">
-          <span class="map-crop-metric-label">
-            <span class="map-crop-metric-dot"></span>
-            ${series.label}
-          </span>
-          <strong>${formatCount(series.value)}</strong>
-        </div>
-      `).join("")}
+  const resources = [
+    ...seriesData.map((series, index) => ({
+      label: series.label,
+      value: formatCount(series.value),
+      icon: ["flower", "unripe", "midripe", "ripe", "pest"][index] || "crop",
+      color: series.color,
+    })),
+    { label: "성숙도", value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#30e4be" },
+  ];
+  legend.innerHTML = resources.map((item) => `
+    <div class="map-resource-item" title="${item.label}" aria-label="${item.label} ${item.value}" style="--resource-color:${item.color}">
+      <span class="map-resource-icon map-resource-icon-${item.icon}"></span>
+      <span class="map-resource-label">${item.label}</span>
+      <strong>${item.value}</strong>
     </div>
-    <div class="map-maturity-card">
-      <span>성숙도</span>
-      <strong>${maturityScore == null ? "-" : maturityScore.toFixed(1)}</strong>
-    </div>
-  `;
+  `).join("");
 }
 
 // ─── Device / session store ──────────────────────────────────────────────────
@@ -799,7 +798,7 @@ function computeViewerMaxZoom(manifest, frames) {
 }
 
 class TileMap {
-  constructor({ container, tilePane, detailPane, annotationPane, markerPane, overlayCanvas, manifest, frames, pestDetections, onSelect, onViewChange, maxZoom }) {
+  constructor({ container, tilePane, detailPane, annotationPane, markerPane, overlayCanvas, miniMapCanvas, manifest, frames, pestDetections, onSelect, onViewChange, maxZoom }) {
     this.container = container;
     this.tilePane = tilePane;
     this.detailPane = detailPane;
@@ -807,6 +806,8 @@ class TileMap {
     this.markerPane = markerPane;
     this.overlayCanvas = overlayCanvas;
     this.ctx = overlayCanvas.getContext("2d");
+    this.miniMapCanvas = miniMapCanvas;
+    this.miniMapCtx = miniMapCanvas ? miniMapCanvas.getContext("2d") : null;
     this.manifest = manifest;
     this.frames = frames;
     this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
@@ -844,9 +845,12 @@ class TileMap {
     this.renderFrame = 0;
     this.destroyed = false;
     this.handlers = null;
+    this.miniMapHandlers = null;
+    this.miniMapDrag = null;
     this.resizeObserver = new ResizeObserver(() => this.queueRender());
     this.resizeObserver.observe(this.container);
     this.bind();
+    this.bindMiniMap();
     this.fitToBounds(false);
   }
 
@@ -868,6 +872,17 @@ class TileMap {
       this.container.removeEventListener("pointerleave", this.handlers.pointerleave);
       this.container.removeEventListener("dblclick", this.handlers.dblclick);
       this.handlers = null;
+    }
+    if (this.miniMapCanvas && this.miniMapHandlers) {
+      this.miniMapCanvas.removeEventListener("pointerdown", this.miniMapHandlers.pointerdown);
+      this.miniMapCanvas.removeEventListener("pointermove", this.miniMapHandlers.pointermove);
+      this.miniMapCanvas.removeEventListener("pointerup", this.miniMapHandlers.endPointer);
+      this.miniMapCanvas.removeEventListener("pointercancel", this.miniMapHandlers.endPointer);
+      this.miniMapCanvas.removeEventListener("lostpointercapture", this.miniMapHandlers.endPointer);
+      document.removeEventListener("pointermove", this.miniMapHandlers.pointermove);
+      document.removeEventListener("pointerup", this.miniMapHandlers.endPointer);
+      document.removeEventListener("pointercancel", this.miniMapHandlers.endPointer);
+      this.miniMapHandlers = null;
     }
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
@@ -983,6 +998,54 @@ class TileMap {
     this.container.addEventListener("pointercancel", this.handlers.endPointer);
     this.container.addEventListener("pointerleave", this.handlers.pointerleave);
     this.container.addEventListener("dblclick", this.handlers.dblclick);
+  }
+
+  bindMiniMap() {
+    if (!this.miniMapCanvas) return;
+    const moveToPointer = (event) => {
+      event.preventDefault();
+      const rect = this.miniMapCanvas.getBoundingClientRect();
+      const mapped = this.miniMapScreenToWorld(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+        rect.width,
+        rect.height,
+      );
+      if (!mapped) return false;
+      this.centerX = mapped.x;
+      this.centerY = mapped.y;
+      this.queueRender();
+      return true;
+    };
+    this.miniMapHandlers = {
+      pointerdown: (event) => {
+        if (event.button != null && event.button !== 0) return;
+        this.miniMapDrag = {
+          id: event.pointerId,
+        };
+        this.miniMapCanvas.setPointerCapture?.(event.pointerId);
+        this.miniMapCanvas.classList.add("is-dragging");
+        moveToPointer(event);
+      },
+      pointermove: (event) => {
+        if (!this.miniMapDrag) return;
+        moveToPointer(event);
+      },
+      endPointer: (event) => {
+        if (!this.miniMapDrag) return;
+        this.miniMapCanvas.releasePointerCapture?.(event.pointerId);
+        this.miniMapCanvas.classList.remove("is-dragging");
+        this.miniMapDrag = null;
+      },
+    };
+    this.miniMapCanvas.addEventListener("pointerdown", this.miniMapHandlers.pointerdown);
+    this.miniMapCanvas.addEventListener("pointermove", this.miniMapHandlers.pointermove);
+    this.miniMapCanvas.addEventListener("pointerup", this.miniMapHandlers.endPointer);
+    this.miniMapCanvas.addEventListener("pointercancel", this.miniMapHandlers.endPointer);
+    this.miniMapCanvas.addEventListener("lostpointercapture", this.miniMapHandlers.endPointer);
+    document.addEventListener("pointermove", this.miniMapHandlers.pointermove);
+    document.addEventListener("pointerup", this.miniMapHandlers.endPointer);
+    document.addEventListener("pointercancel", this.miniMapHandlers.endPointer);
   }
 
   get viewportWidth() { return this.container.clientWidth; }
@@ -1146,6 +1209,56 @@ class TileMap {
     return {
       x: (x - this.viewportWidth / 2) / this.scaleX + this.centerX,
       y: (y - this.viewportHeight / 2) / this.scaleY + this.centerY,
+    };
+  }
+
+  getMiniMapTransform(width, height) {
+    const pad = 10;
+    const scale = Math.min(
+      (width - pad * 2) / this.manifest.image_width,
+      (height - pad * 2) / this.manifest.image_height,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return null;
+    return {
+      scale,
+      ox: (width - this.manifest.image_width * scale) / 2,
+      oy: (height - this.manifest.image_height * scale) / 2,
+    };
+  }
+
+  miniMapScreenToWorld(x, y, width, height) {
+    const tx = this.getMiniMapTransform(width, height);
+    if (!tx) return null;
+    return {
+      x: clamp((x - tx.ox) / tx.scale, 0, this.manifest.image_width),
+      y: clamp((y - tx.oy) / tx.scale, 0, this.manifest.image_height),
+    };
+  }
+
+  getMiniMapViewportRect(width, height, bounds = this.getViewBounds()) {
+    const tx = this.getMiniMapTransform(width, height);
+    if (!tx) return null;
+    const mapW = this.manifest.image_width * tx.scale;
+    const mapH = this.manifest.image_height * tx.scale;
+    const centerX = tx.ox + clamp(this.centerX, 0, this.manifest.image_width) * tx.scale;
+    const centerY = tx.oy + clamp(this.centerY, 0, this.manifest.image_height) * tx.scale;
+    const actualWidth = Math.max(3, (bounds.right - bounds.left) * tx.scale);
+    const actualHeight = Math.max(3, (bounds.bottom - bounds.top) * tx.scale);
+    const visualWidth = clamp(actualWidth, 12, Math.max(24, mapW * 0.34));
+    const visualHeight = clamp(actualHeight, 10, Math.max(18, mapH * 0.34));
+    const left = centerX - visualWidth / 2;
+    const top = centerY - visualHeight / 2;
+    const right = centerX + visualWidth / 2;
+    const bottom = centerY + visualHeight / 2;
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: visualWidth,
+      height: visualHeight,
+      centerX,
+      centerY,
     };
   }
 
@@ -1422,6 +1535,102 @@ class TileMap {
     }
   }
 
+  drawMiniMap(bounds = this.getViewBounds()) {
+    const canvas = this.miniMapCanvas;
+    const ctx = this.miniMapCtx;
+    if (!canvas || !ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width));
+    const height = Math.max(1, Math.floor(rect.height));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(width * dpr));
+    canvas.height = Math.max(1, Math.floor(height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const tx = this.getMiniMapTransform(width, height);
+    if (!tx) return;
+    const sx = (x) => tx.ox + x * tx.scale;
+    const sy = (y) => tx.oy + y * tx.scale;
+    const mapW = this.manifest.image_width * tx.scale;
+    const mapH = this.manifest.image_height * tx.scale;
+    const layout = this.manifest.layout || {};
+
+    ctx.fillStyle = "#031013";
+    ctx.fillRect(tx.ox, tx.oy, mapW, mapH);
+
+    ctx.strokeStyle = "rgba(45, 238, 214, 0.18)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i += 1) {
+      const x = tx.ox + (mapW * i) / 8;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(x) + 0.5, tx.oy);
+      ctx.lineTo(Math.round(x) + 0.5, tx.oy + mapH);
+      ctx.stroke();
+    }
+    const gridRows = Math.max(4, Math.min(12, (this.manifest.rails || []).length));
+    for (let i = 1; i < gridRows; i += 1) {
+      const y = tx.oy + (mapH * i) / gridRows;
+      ctx.beginPath();
+      ctx.moveTo(tx.ox, Math.round(y) + 0.5);
+      ctx.lineTo(tx.ox + mapW, Math.round(y) + 0.5);
+      ctx.stroke();
+    }
+
+    for (const rail of this.manifest.rails || []) {
+      const railY = (Number(layout.margin_y) || 0) + rail.rail_y_m * layout.px_per_meter_y + layout.cell_height / 2;
+      ctx.strokeStyle = "rgba(48, 228, 190, 0.52)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx(this.railTrackWorldBounds.left), sy(railY));
+      ctx.lineTo(sx(this.railTrackWorldBounds.right), sy(railY));
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(95, 255, 101, 0.42)";
+    for (const frame of this.frames) {
+      const r = frame.rect_px;
+      ctx.fillRect(
+        sx(r.left),
+        sy(r.top),
+        Math.max(1, (r.right - r.left) * tx.scale),
+        Math.max(1, (r.bottom - r.top) * tx.scale),
+      );
+    }
+
+    if (this.selectedFrameId != null) {
+      const frame = this.framesById.get(String(this.selectedFrameId));
+      if (frame) {
+        const r = frame.rect_px;
+        ctx.strokeStyle = "rgba(255, 91, 69, 0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(
+          sx(r.left),
+          sy(r.top),
+          Math.max(3, (r.right - r.left) * tx.scale),
+          Math.max(3, (r.bottom - r.top) * tx.scale),
+        );
+      }
+    }
+
+    const viewport = this.getMiniMapViewportRect(width, height, bounds);
+    if (viewport) {
+      ctx.fillStyle = "rgba(247, 215, 90, 0.08)";
+      ctx.fillRect(viewport.left, viewport.top, viewport.width, viewport.height);
+      ctx.strokeStyle = "rgba(247, 215, 90, 0.98)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(viewport.left, viewport.top, viewport.width, viewport.height);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(viewport.left + 3, viewport.top + 3, Math.max(1, viewport.width - 6), Math.max(1, viewport.height - 6));
+    }
+
+    ctx.strokeStyle = "rgba(46, 234, 214, 0.72)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tx.ox + 0.5, tx.oy + 0.5, mapW - 1, mapH - 1);
+  }
+
   renderDetailFrames(bounds) {
     const fade = clamp((this.currentZoom - this.detailFadeStartZoom) / this.detailFadeSpan, 0, 1);
     this.detailPane.style.opacity = fade.toFixed(3);
@@ -1525,6 +1734,7 @@ class TileMap {
     this.renderAnnotations(bounds);
     this.renderPestMarkers();
     this.drawOverlay();
+    this.drawMiniMap(bounds);
     this.onViewChange({
       zoom: this.currentZoom,
       screenPxPerMeter: this.scaleX * this.manifest.layout.px_per_meter_x,
@@ -2447,6 +2657,29 @@ const FLAG_LABELS = {
   data_gap: "데이터 공백",
 };
 
+function renderCommandInfo(frame, insights = currentInsightsData) {
+  const title = document.getElementById("rtsInfoTitle");
+  const rail = document.getElementById("rtsInfoRail");
+  const position = document.getElementById("rtsInfoPosition");
+  const status = document.getElementById("rtsInfoStatus");
+  if (!title || !rail || !position || !status) return;
+  if (!frame) {
+    title.textContent = "NO TARGET";
+    rail.textContent = "-";
+    position.textContent = "-";
+    status.textContent = "Awaiting selection";
+    return;
+  }
+
+  const ri = insights?.available ? insights.rails?.[frame.rail_name] : null;
+  title.textContent = frame.label || frame.id || "Selected frame";
+  rail.textContent = frame.rail_name || "-";
+  position.textContent = `${formatMeters(frame.odom_x)} / ${formatMeters(frame.rail_y_m)}`;
+  status.textContent = ri
+    ? `Health ${ri.health_score} · Priority ${ri.priority_score}`
+    : "Telemetry nominal";
+}
+
 function renderSelection(frame, insights) {
   const pill = document.getElementById("selectionPill");
   const selectionMeta = document.getElementById("selectionMeta");
@@ -2454,10 +2687,11 @@ function renderSelection(frame, insights) {
   const cameraGrid = document.getElementById("cameraGrid");
   if (!pill || !selectionMeta || !contactSheet || !cameraGrid) return;
 
-  // Show the selection panel
+  renderCommandInfo(frame, insights);
+
+  // Keep the hidden selection panel state in sync for existing detail workflows.
   const selPanel = document.getElementById("selectionPanel");
   if (selPanel) selPanel.hidden = false;
-  setRightPanelMode("selection");
 
   pill.textContent = frame.rail_name;
   selectionMeta.innerHTML = "";
@@ -3555,6 +3789,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     annotationPane: document.getElementById("annotationPane"),
     markerPane: document.getElementById("markerPane"),
     overlayCanvas: document.getElementById("overlayCanvas"),
+    miniMapCanvas: document.getElementById("rtsMiniMapCanvas"),
     manifest,
     frames,
     pestDetections: currentPestDetections,
