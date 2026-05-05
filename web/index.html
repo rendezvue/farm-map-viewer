@@ -134,6 +134,20 @@
                   <strong id="scaleValue">-</strong>
                 </div>
               </div>
+              <div class="map-vertical-scrollbar" id="mapVerticalScrollbar" role="scrollbar" aria-label="지도 세로 이동" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+                <button class="map-scroll-arrow map-scroll-arrow-up" id="mapScrollUp" type="button" aria-label="위로 이동"></button>
+                <div class="map-scroll-track" id="mapScrollTrack">
+                  <div class="map-scroll-thumb" id="mapScrollThumb"></div>
+                </div>
+                <button class="map-scroll-arrow map-scroll-arrow-down" id="mapScrollDown" type="button" aria-label="아래로 이동"></button>
+              </div>
+              <div class="map-horizontal-scrollbar" id="mapHorizontalScrollbar" role="scrollbar" aria-label="지도 좌우 이동" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+                <button class="map-scroll-arrow map-scroll-arrow-left" id="mapScrollLeft" type="button" aria-label="왼쪽 이동"></button>
+                <div class="map-scroll-track" id="mapHorizontalScrollTrack">
+                  <div class="map-scroll-thumb" id="mapHorizontalScrollThumb"></div>
+                </div>
+                <button class="map-scroll-arrow map-scroll-arrow-right" id="mapScrollRight" type="button" aria-label="오른쪽 이동"></button>
+              </div>
               <div class="rts-command-console" aria-label="전술 지휘 콘솔">
                 <div class="rts-minimap-panel">
                   <canvas id="rtsMiniMapCanvas" class="rts-minimap-canvas"></canvas>
@@ -148,11 +162,8 @@
                     <span>Status</span><b id="rtsInfoStatus">Awaiting data</b>
                   </div>
                 </div>
-                <div class="rts-command-panel" aria-hidden="true">
-                  <div class="rts-command-slot is-active"></div>
-                  <div class="rts-command-slot"></div>
-                  <div class="rts-command-slot"></div>
-                  <div class="rts-command-slot"></div>
+                <div class="rts-command-panel" aria-label="지도 레이어 선택">
+                  <div class="map-layer-selector" id="mapLayerSelector" aria-label="지도 레이어 선택"></div>
                 </div>
               </div>
             </div>

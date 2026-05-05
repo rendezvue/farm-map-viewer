@@ -754,6 +754,34 @@ function chooseDefaultLayerId(layers) {
   return preferred?.id || layerList[0]?.id || null;
 }
 
+function setActiveMapLayer(layerId, { forceOff = false } = {}) {
+  const layer = currentLayers?.layers?.find((item) => item.id === layerId) || null;
+  if (!layer || forceOff) {
+    activeLayerId = null;
+    showLayerOverlay = false;
+    selectedSegmentId = null;
+    hoveredSegmentId = null;
+    selectedPestDetectionId = null;
+    showSegmentTooltip(null);
+    updateLayerRowStates();
+    renderLayerLegend(null);
+    renderLayerSummary(null);
+    currentMap?.queueRender();
+    return;
+  }
+
+  activeLayerId = layer.id;
+  showLayerOverlay = true;
+  selectedSegmentId = null;
+  hoveredSegmentId = null;
+  selectedPestDetectionId = null;
+  showSegmentTooltip(null);
+  updateLayerRowStates();
+  renderLayerLegend(layer);
+  renderLayerSummary(layer);
+  currentMap?.queueRender();
+}
+
 function formatPestMarkerTitle(detection) {
   const bits = [detection.label || "병충해"];
   if (detection.rail_name && detection.odom_x != null) {
@@ -798,7 +826,31 @@ function computeViewerMaxZoom(manifest, frames) {
 }
 
 class TileMap {
-  constructor({ container, tilePane, detailPane, annotationPane, markerPane, overlayCanvas, miniMapCanvas, manifest, frames, pestDetections, onSelect, onViewChange, maxZoom }) {
+  constructor({
+    container,
+    tilePane,
+    detailPane,
+    annotationPane,
+    markerPane,
+    overlayCanvas,
+    miniMapCanvas,
+    verticalScrollBar,
+    verticalScrollTrack,
+    verticalScrollThumb,
+    scrollUpButton,
+    scrollDownButton,
+    horizontalScrollBar,
+    horizontalScrollTrack,
+    horizontalScrollThumb,
+    scrollLeftButton,
+    scrollRightButton,
+    manifest,
+    frames,
+    pestDetections,
+    onSelect,
+    onViewChange,
+    maxZoom,
+  }) {
     this.container = container;
     this.tilePane = tilePane;
     this.detailPane = detailPane;
@@ -808,6 +860,16 @@ class TileMap {
     this.ctx = overlayCanvas.getContext("2d");
     this.miniMapCanvas = miniMapCanvas;
     this.miniMapCtx = miniMapCanvas ? miniMapCanvas.getContext("2d") : null;
+    this.verticalScrollBar = verticalScrollBar;
+    this.verticalScrollTrack = verticalScrollTrack;
+    this.verticalScrollThumb = verticalScrollThumb;
+    this.scrollUpButton = scrollUpButton;
+    this.scrollDownButton = scrollDownButton;
+    this.horizontalScrollBar = horizontalScrollBar;
+    this.horizontalScrollTrack = horizontalScrollTrack;
+    this.horizontalScrollThumb = horizontalScrollThumb;
+    this.scrollLeftButton = scrollLeftButton;
+    this.scrollRightButton = scrollRightButton;
     this.manifest = manifest;
     this.frames = frames;
     this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
@@ -847,10 +909,16 @@ class TileMap {
     this.handlers = null;
     this.miniMapHandlers = null;
     this.miniMapDrag = null;
+    this.verticalScrollHandlers = null;
+    this.verticalScrollDrag = null;
+    this.horizontalScrollHandlers = null;
+    this.horizontalScrollDrag = null;
     this.resizeObserver = new ResizeObserver(() => this.queueRender());
     this.resizeObserver.observe(this.container);
     this.bind();
     this.bindMiniMap();
+    this.bindVerticalScroll();
+    this.bindHorizontalScroll();
     this.fitToBounds(false);
   }
 
@@ -883,6 +951,30 @@ class TileMap {
       document.removeEventListener("pointerup", this.miniMapHandlers.endPointer);
       document.removeEventListener("pointercancel", this.miniMapHandlers.endPointer);
       this.miniMapHandlers = null;
+    }
+    if (this.verticalScrollBar && this.verticalScrollHandlers) {
+      this.verticalScrollBar.removeEventListener("pointerdown", this.verticalScrollHandlers.stopMapPointer);
+      this.verticalScrollBar.removeEventListener("wheel", this.verticalScrollHandlers.wheel);
+      this.verticalScrollTrack?.removeEventListener("pointerdown", this.verticalScrollHandlers.trackPointerDown);
+      this.verticalScrollThumb?.removeEventListener("pointerdown", this.verticalScrollHandlers.thumbPointerDown);
+      this.scrollUpButton?.removeEventListener("click", this.verticalScrollHandlers.scrollUp);
+      this.scrollDownButton?.removeEventListener("click", this.verticalScrollHandlers.scrollDown);
+      document.removeEventListener("pointermove", this.verticalScrollHandlers.pointerMove);
+      document.removeEventListener("pointerup", this.verticalScrollHandlers.endPointer);
+      document.removeEventListener("pointercancel", this.verticalScrollHandlers.endPointer);
+      this.verticalScrollHandlers = null;
+    }
+    if (this.horizontalScrollBar && this.horizontalScrollHandlers) {
+      this.horizontalScrollBar.removeEventListener("pointerdown", this.horizontalScrollHandlers.stopMapPointer);
+      this.horizontalScrollBar.removeEventListener("wheel", this.horizontalScrollHandlers.wheel);
+      this.horizontalScrollTrack?.removeEventListener("pointerdown", this.horizontalScrollHandlers.trackPointerDown);
+      this.horizontalScrollThumb?.removeEventListener("pointerdown", this.horizontalScrollHandlers.thumbPointerDown);
+      this.scrollLeftButton?.removeEventListener("click", this.horizontalScrollHandlers.scrollLeft);
+      this.scrollRightButton?.removeEventListener("click", this.horizontalScrollHandlers.scrollRight);
+      document.removeEventListener("pointermove", this.horizontalScrollHandlers.pointerMove);
+      document.removeEventListener("pointerup", this.horizontalScrollHandlers.endPointer);
+      document.removeEventListener("pointercancel", this.horizontalScrollHandlers.endPointer);
+      this.horizontalScrollHandlers = null;
     }
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
@@ -1048,6 +1140,193 @@ class TileMap {
     document.addEventListener("pointercancel", this.miniMapHandlers.endPointer);
   }
 
+  bindVerticalScroll() {
+    if (!this.verticalScrollBar || !this.verticalScrollTrack || !this.verticalScrollThumb) return;
+
+    const scrollByViewport = (direction) => {
+      const metrics = this.getVerticalScrollMetrics();
+      if (!metrics.scrollable) return;
+      const step = metrics.viewWorldHeight * 0.32;
+      this.centerY = clamp(this.centerY + direction * step, metrics.minCenterY, metrics.maxCenterY);
+      this.queueRender();
+    };
+
+    const setFromPointer = (event, offsetY = null) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const metrics = this.getVerticalScrollMetrics();
+      if (!metrics.scrollable) return;
+      const rect = this.verticalScrollTrack.getBoundingClientRect();
+      const grabOffset = offsetY == null ? metrics.thumbHeight / 2 : offsetY;
+      const thumbTop = event.clientY - rect.top - grabOffset;
+      const ratio = metrics.travel > 0 ? thumbTop / metrics.travel : 0;
+      this.centerY = metrics.minCenterY + clamp(ratio, 0, 1) * metrics.range;
+      this.queueRender();
+    };
+
+    this.verticalScrollHandlers = {
+      stopMapPointer: (event) => {
+        event.stopPropagation();
+      },
+      wheel: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const metrics = this.getVerticalScrollMetrics();
+        if (!metrics.scrollable) return;
+        this.centerY = clamp(
+          this.centerY + event.deltaY / this.scaleY,
+          metrics.minCenterY,
+          metrics.maxCenterY,
+        );
+        this.queueRender();
+      },
+      trackPointerDown: (event) => {
+        if (event.button != null && event.button !== 0) return;
+        this.verticalScrollDrag = { id: event.pointerId, offsetY: null };
+        this.verticalScrollBar.classList.add("is-dragging");
+        this.verticalScrollTrack.setPointerCapture?.(event.pointerId);
+        setFromPointer(event);
+      },
+      thumbPointerDown: (event) => {
+        if (event.button != null && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const thumbRect = this.verticalScrollThumb.getBoundingClientRect();
+        this.verticalScrollDrag = {
+          id: event.pointerId,
+          offsetY: event.clientY - thumbRect.top,
+        };
+        this.verticalScrollBar.classList.add("is-dragging");
+        this.verticalScrollThumb.setPointerCapture?.(event.pointerId);
+      },
+      pointerMove: (event) => {
+        if (!this.verticalScrollDrag) return;
+        setFromPointer(event, this.verticalScrollDrag.offsetY);
+      },
+      endPointer: (event) => {
+        if (!this.verticalScrollDrag) return;
+        try { this.verticalScrollTrack.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        try { this.verticalScrollThumb.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        this.verticalScrollBar.classList.remove("is-dragging");
+        this.verticalScrollDrag = null;
+      },
+      scrollUp: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollByViewport(-1);
+      },
+      scrollDown: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollByViewport(1);
+      },
+    };
+
+    this.verticalScrollBar.addEventListener("pointerdown", this.verticalScrollHandlers.stopMapPointer);
+    this.verticalScrollBar.addEventListener("wheel", this.verticalScrollHandlers.wheel, { passive: false });
+    this.verticalScrollTrack.addEventListener("pointerdown", this.verticalScrollHandlers.trackPointerDown);
+    this.verticalScrollThumb.addEventListener("pointerdown", this.verticalScrollHandlers.thumbPointerDown);
+    this.scrollUpButton?.addEventListener("click", this.verticalScrollHandlers.scrollUp);
+    this.scrollDownButton?.addEventListener("click", this.verticalScrollHandlers.scrollDown);
+    document.addEventListener("pointermove", this.verticalScrollHandlers.pointerMove);
+    document.addEventListener("pointerup", this.verticalScrollHandlers.endPointer);
+    document.addEventListener("pointercancel", this.verticalScrollHandlers.endPointer);
+  }
+
+  bindHorizontalScroll() {
+    if (!this.horizontalScrollBar || !this.horizontalScrollTrack || !this.horizontalScrollThumb) return;
+
+    const scrollByViewport = (direction) => {
+      const metrics = this.getHorizontalScrollMetrics();
+      if (!metrics.scrollable) return;
+      const step = metrics.viewWorldWidth * 0.32;
+      this.centerX = clamp(this.centerX + direction * step, metrics.minCenterX, metrics.maxCenterX);
+      this.queueRender();
+    };
+
+    const setFromPointer = (event, offsetX = null) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const metrics = this.getHorizontalScrollMetrics();
+      if (!metrics.scrollable) return;
+      const rect = this.horizontalScrollTrack.getBoundingClientRect();
+      const grabOffset = offsetX == null ? metrics.thumbWidth / 2 : offsetX;
+      const thumbLeft = event.clientX - rect.left - grabOffset;
+      const ratio = metrics.travel > 0 ? thumbLeft / metrics.travel : 0;
+      this.centerX = metrics.minCenterX + clamp(ratio, 0, 1) * metrics.range;
+      this.queueRender();
+    };
+
+    this.horizontalScrollHandlers = {
+      stopMapPointer: (event) => {
+        event.stopPropagation();
+      },
+      wheel: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const metrics = this.getHorizontalScrollMetrics();
+        if (!metrics.scrollable) return;
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        this.centerX = clamp(
+          this.centerX + delta / this.scaleX,
+          metrics.minCenterX,
+          metrics.maxCenterX,
+        );
+        this.queueRender();
+      },
+      trackPointerDown: (event) => {
+        if (event.button != null && event.button !== 0) return;
+        this.horizontalScrollDrag = { id: event.pointerId, offsetX: null };
+        this.horizontalScrollBar.classList.add("is-dragging");
+        this.horizontalScrollTrack.setPointerCapture?.(event.pointerId);
+        setFromPointer(event);
+      },
+      thumbPointerDown: (event) => {
+        if (event.button != null && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const thumbRect = this.horizontalScrollThumb.getBoundingClientRect();
+        this.horizontalScrollDrag = {
+          id: event.pointerId,
+          offsetX: event.clientX - thumbRect.left,
+        };
+        this.horizontalScrollBar.classList.add("is-dragging");
+        this.horizontalScrollThumb.setPointerCapture?.(event.pointerId);
+      },
+      pointerMove: (event) => {
+        if (!this.horizontalScrollDrag) return;
+        setFromPointer(event, this.horizontalScrollDrag.offsetX);
+      },
+      endPointer: (event) => {
+        if (!this.horizontalScrollDrag) return;
+        try { this.horizontalScrollTrack.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        try { this.horizontalScrollThumb.releasePointerCapture?.(event.pointerId); } catch (_) {}
+        this.horizontalScrollBar.classList.remove("is-dragging");
+        this.horizontalScrollDrag = null;
+      },
+      scrollLeft: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollByViewport(-1);
+      },
+      scrollRight: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollByViewport(1);
+      },
+    };
+
+    this.horizontalScrollBar.addEventListener("pointerdown", this.horizontalScrollHandlers.stopMapPointer);
+    this.horizontalScrollBar.addEventListener("wheel", this.horizontalScrollHandlers.wheel, { passive: false });
+    this.horizontalScrollTrack.addEventListener("pointerdown", this.horizontalScrollHandlers.trackPointerDown);
+    this.horizontalScrollThumb.addEventListener("pointerdown", this.horizontalScrollHandlers.thumbPointerDown);
+    this.scrollLeftButton?.addEventListener("click", this.horizontalScrollHandlers.scrollLeft);
+    this.scrollRightButton?.addEventListener("click", this.horizontalScrollHandlers.scrollRight);
+    document.addEventListener("pointermove", this.horizontalScrollHandlers.pointerMove);
+    document.addEventListener("pointerup", this.horizontalScrollHandlers.endPointer);
+    document.addEventListener("pointercancel", this.horizontalScrollHandlers.endPointer);
+  }
+
   get viewportWidth() { return this.container.clientWidth; }
   get viewportHeight() { return this.container.clientHeight; }
   get baseScale() { return Math.min(this.scaleX, this.scaleY); }
@@ -1210,6 +1489,78 @@ class TileMap {
       x: (x - this.viewportWidth / 2) / this.scaleX + this.centerX,
       y: (y - this.viewportHeight / 2) / this.scaleY + this.centerY,
     };
+  }
+
+  getVerticalScrollMetrics() {
+    const trackHeight = this.verticalScrollTrack
+      ? this.verticalScrollTrack.getBoundingClientRect().height
+      : 0;
+    const imageHeight = Math.max(1, this.manifest.image_height);
+    const viewWorldHeight = this.viewportHeight / Math.max(this.scaleY, 0.0001);
+    const scrollable = trackHeight > 0 && viewWorldHeight < imageHeight;
+    const minCenterY = scrollable ? viewWorldHeight / 2 : imageHeight / 2;
+    const maxCenterY = scrollable ? imageHeight - viewWorldHeight / 2 : imageHeight / 2;
+    const range = Math.max(0, maxCenterY - minCenterY);
+    const visibleRatio = clamp(viewWorldHeight / imageHeight, 0.08, 1);
+    const thumbHeight = trackHeight > 0 ? clamp(trackHeight * visibleRatio, 28, trackHeight) : 0;
+    const travel = Math.max(0, trackHeight - thumbHeight);
+    const ratio = range > 0 ? clamp((this.centerY - minCenterY) / range, 0, 1) : 0;
+    return {
+      scrollable,
+      trackHeight,
+      viewWorldHeight,
+      minCenterY,
+      maxCenterY,
+      range,
+      thumbHeight,
+      travel,
+      ratio,
+    };
+  }
+
+  updateVerticalScrollBar() {
+    if (!this.verticalScrollBar || !this.verticalScrollThumb) return;
+    const metrics = this.getVerticalScrollMetrics();
+    this.verticalScrollBar.classList.toggle("is-disabled", !metrics.scrollable);
+    this.verticalScrollThumb.style.height = `${metrics.thumbHeight}px`;
+    this.verticalScrollThumb.style.transform = `translateY(${metrics.ratio * metrics.travel}px)`;
+    this.verticalScrollBar.setAttribute("aria-valuenow", String(Math.round(metrics.ratio * 100)));
+  }
+
+  getHorizontalScrollMetrics() {
+    const trackWidth = this.horizontalScrollTrack
+      ? this.horizontalScrollTrack.getBoundingClientRect().width
+      : 0;
+    const imageWidth = Math.max(1, this.manifest.image_width);
+    const viewWorldWidth = this.viewportWidth / Math.max(this.scaleX, 0.0001);
+    const scrollable = trackWidth > 0 && viewWorldWidth < imageWidth;
+    const minCenterX = scrollable ? viewWorldWidth / 2 : imageWidth / 2;
+    const maxCenterX = scrollable ? imageWidth - viewWorldWidth / 2 : imageWidth / 2;
+    const range = Math.max(0, maxCenterX - minCenterX);
+    const visibleRatio = clamp(viewWorldWidth / imageWidth, 0.08, 1);
+    const thumbWidth = trackWidth > 0 ? clamp(trackWidth * visibleRatio, 28, trackWidth) : 0;
+    const travel = Math.max(0, trackWidth - thumbWidth);
+    const ratio = range > 0 ? clamp((this.centerX - minCenterX) / range, 0, 1) : 0;
+    return {
+      scrollable,
+      trackWidth,
+      viewWorldWidth,
+      minCenterX,
+      maxCenterX,
+      range,
+      thumbWidth,
+      travel,
+      ratio,
+    };
+  }
+
+  updateHorizontalScrollBar() {
+    if (!this.horizontalScrollBar || !this.horizontalScrollThumb) return;
+    const metrics = this.getHorizontalScrollMetrics();
+    this.horizontalScrollBar.classList.toggle("is-disabled", !metrics.scrollable);
+    this.horizontalScrollThumb.style.width = `${metrics.thumbWidth}px`;
+    this.horizontalScrollThumb.style.transform = `translateX(${metrics.ratio * metrics.travel}px)`;
+    this.horizontalScrollBar.setAttribute("aria-valuenow", String(Math.round(metrics.ratio * 100)));
   }
 
   getMiniMapTransform(width, height) {
@@ -1735,6 +2086,8 @@ class TileMap {
     this.renderPestMarkers();
     this.drawOverlay();
     this.drawMiniMap(bounds);
+    this.updateVerticalScrollBar();
+    this.updateHorizontalScrollBar();
     this.onViewChange({
       zoom: this.currentZoom,
       screenPxPerMeter: this.scaleX * this.manifest.layout.px_per_meter_x,
@@ -2996,23 +3349,54 @@ function renderLayersPanel(layers) {
     row.append(indicator, info, toggle);
 
     row.addEventListener("click", () => {
-      if (activeLayerId === layer.id && showLayerOverlay) {
-        // Turn off
-        showLayerOverlay = false;
-        activeLayerId = null;
-      } else {
-        activeLayerId = layer.id;
-        showLayerOverlay = true;
-      }
-      hoveredSegmentId = null;
-      showSegmentTooltip(null);
-      updateLayerRowStates();
-      renderLayerLegend(layer);
-      renderLayerSummary(layer);
-      currentMap?.queueRender();
+      setActiveMapLayer(layer.id, { forceOff: activeLayerId === layer.id && showLayerOverlay });
     });
 
     list.appendChild(row);
+  }
+
+  updateLayerRowStates();
+}
+
+function renderMapLayerControls(layers) {
+  const selector = document.getElementById("mapLayerSelector");
+  if (!selector) return;
+  if (!layers || !layers.layers?.length) {
+    selector.hidden = true;
+    selector.innerHTML = "";
+    return;
+  }
+
+  selector.hidden = false;
+  selector.innerHTML = `
+    <div class="map-layer-title">MAP LAYERS</div>
+    <div class="map-layer-options"></div>
+  `;
+  const options = selector.querySelector(".map-layer-options");
+
+  for (const layer of layers.layers) {
+    const label = document.createElement("label");
+    label.className = "map-layer-option";
+    label.dataset.layerId = layer.id;
+    label.title = layer.description || layer.label;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "map-layer";
+    checkbox.value = layer.id;
+
+    const indicator = document.createElement("span");
+    indicator.className = "map-layer-swatch";
+    indicator.dataset.scheme = layer.color_scheme;
+
+    const text = createElement("span", "map-layer-name", layer.label);
+
+    label.append(checkbox, indicator, text);
+    label.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      setActiveMapLayer(layer.id, { forceOff: !checkbox.checked });
+    });
+    options.appendChild(label);
   }
 
   updateLayerRowStates();
@@ -3022,6 +3406,12 @@ function updateLayerRowStates() {
   for (const row of document.querySelectorAll(".layer-row")) {
     const isActive = showLayerOverlay && row.dataset.layerId === activeLayerId;
     row.classList.toggle("is-active", isActive);
+  }
+  for (const option of document.querySelectorAll(".map-layer-option")) {
+    const isActive = showLayerOverlay && option.dataset.layerId === activeLayerId;
+    option.classList.toggle("is-active", isActive);
+    const checkbox = option.querySelector("input[type='checkbox']");
+    if (checkbox) checkbox.checked = isActive;
   }
   // Update toolbar button
   const btn = document.getElementById("toggleLayersButton");
@@ -3638,13 +4028,7 @@ function focusTaskOnMap(task, map) {
   }
   // Activate relevant layer on map
   if (task.layer_id && currentLayersData) {
-    activeLayerId = task.layer_id;
-    showLayerOverlay = true;
-    updateLayerRowStates();
-    const layer = getActiveLayer();
-    renderLayerLegend(layer);
-    renderLayerSummary(layer);
-    map.queueRender();
+    setActiveMapLayer(task.layer_id);
   }
 }
 
@@ -3680,6 +4064,15 @@ function initMapControls() {
   if (stack) {
     for (const eventName of ["pointerdown", "pointerup", "pointermove", "dblclick", "wheel"]) {
       stack.addEventListener(eventName, (event) => event.stopPropagation(), { passive: eventName !== "wheel" });
+    }
+  }
+  const layerSelector = document.getElementById("mapLayerSelector");
+  if (layerSelector) {
+    for (const eventName of ["pointerdown", "pointerup", "pointermove", "click", "dblclick", "wheel"]) {
+      layerSelector.addEventListener(eventName, (event) => {
+        event.stopPropagation();
+        if (eventName === "wheel") event.preventDefault();
+      }, { passive: eventName !== "wheel" });
     }
   }
   document.getElementById("mapZoomIn")?.addEventListener("click", () => currentMap?.zoomBy(0.45, centerAnchor()));
@@ -3790,6 +4183,16 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     markerPane: document.getElementById("markerPane"),
     overlayCanvas: document.getElementById("overlayCanvas"),
     miniMapCanvas: document.getElementById("rtsMiniMapCanvas"),
+    verticalScrollBar: document.getElementById("mapVerticalScrollbar"),
+    verticalScrollTrack: document.getElementById("mapScrollTrack"),
+    verticalScrollThumb: document.getElementById("mapScrollThumb"),
+    scrollUpButton: document.getElementById("mapScrollUp"),
+    scrollDownButton: document.getElementById("mapScrollDown"),
+    horizontalScrollBar: document.getElementById("mapHorizontalScrollbar"),
+    horizontalScrollTrack: document.getElementById("mapHorizontalScrollTrack"),
+    horizontalScrollThumb: document.getElementById("mapHorizontalScrollThumb"),
+    scrollLeftButton: document.getElementById("mapScrollLeft"),
+    scrollRightButton: document.getElementById("mapScrollRight"),
     manifest,
     frames,
     pestDetections: currentPestDetections,
@@ -3804,6 +4207,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 
   renderAlertPanel(insights, map);
   renderLayersPanel(layers);
+  renderMapLayerControls(layers);
   renderLayerLegend(getActiveLayer());
   renderLayerSummary(getActiveLayer());
   renderTaskPanel(tasks, map);
@@ -3935,20 +4339,10 @@ async function bootstrap() {
     toggleLayersBtn.addEventListener("click", () => {
       if (!currentLayersData) return;
       if (!showLayerOverlay) {
-        if (!activeLayerId && currentLayersData.layers?.length) {
-          activeLayerId = currentLayersData.layers[0].id;
-        }
-        showLayerOverlay = true;
+        setActiveMapLayer(activeLayerId || currentLayersData.layers?.[0]?.id);
       } else {
-        showLayerOverlay = false;
+        setActiveMapLayer(activeLayerId, { forceOff: true });
       }
-      hoveredSegmentId = null;
-      showSegmentTooltip(null);
-      updateLayerRowStates();
-      const layer = getActiveLayer();
-      renderLayerLegend(layer);
-      renderLayerSummary(layer);
-      currentMap?.queueRender();
     });
   }
 
