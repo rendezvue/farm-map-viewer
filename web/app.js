@@ -572,8 +572,8 @@ const INITIAL_MAP_VIEW = {
   railName: "rail_001",
   odomX: 1,
   zoom: 6.8,
-  centerX: 637,
-  centerY: 248,
+  centerX: 702,
+  centerY: 245,
 };
 const MAP_LAYER_CONTROL_ORDER = ["disease_pest_risk", "growth_status"];
 const MAP_LAYER_CONTROL_LABELS = {

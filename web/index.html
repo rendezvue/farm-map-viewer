@@ -12,24 +12,16 @@
   <body>
     <div class="app-shell">
 
-      <!-- ── TopBar ─────────────────────────────────────────────────────── -->
       <header class="topbar">
         <div class="topbar-left">
-          <div class="topbar-logo">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-              <rect width="22" height="22" rx="6" fill="url(#tbar-lg)"/>
-              <defs>
-                <linearGradient id="tbar-lg" x1="0" y1="0" x2="22" y2="22">
-                  <stop stop-color="#2a9a45"/>
-                  <stop offset="1" stop-color="#45d46a"/>
-                </linearGradient>
-              </defs>
-              <path d="M6 15L10 8L14 12L16 9" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="16" cy="9" r="1.5" fill="white"/>
-            </svg>
+          <div class="topbar-logo" aria-label="FARMILY">
             <span class="topbar-brand">FARMILY</span>
           </div>
           <div class="topbar-divider"></div>
+          <div class="topbar-page">
+            <strong>Issue details</strong>
+            <span>Greenhouses / Greenhouse 1 / Issue overview / Issue details</span>
+          </div>
           <nav class="topbar-nav" id="topbarNav">
             <button class="topbar-tab is-active" data-nav="crop" type="button">작물 탭</button>
             <button class="topbar-tab" data-nav="analysis" type="button">분석</button>
@@ -43,10 +35,7 @@
         </div>
       </header>
 
-      <!-- ── Content area ───────────────────────────────────────────────── -->
       <div class="content-area">
-
-        <!-- ── 왼쪽 사이드바 ─────────────────────────────────────────────── -->
         <aside class="sidebar">
 
           <!-- 1. AI 검출 현황 -->
@@ -106,53 +95,10 @@
 
         </aside>
 
-        <!-- ── 맵 스테이지 ────────────────────────────────────────────────── -->
         <main class="map-stage">
           <section class="map-card">
-            <div id="mapViewport" class="map-viewport">
-              <div id="tilePane" class="tile-pane"></div>
-              <div id="detailPane" class="detail-pane"></div>
-              <div id="annotationPane" class="annotation-pane"></div>
-              <div id="markerPane" class="marker-pane"></div>
-              <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
-              <div id="segmentTooltip" class="segment-tooltip" hidden></div>
-              <div class="map-topline">
-                <div class="map-resource-hud" id="mapCropLegend"></div>
-              </div>
-              <div class="map-control-stack" aria-label="지도 컨트롤">
-                <button id="mapZoomIn" class="map-icon-btn" type="button" aria-label="확대">+</button>
-                <button id="mapZoomOut" class="map-icon-btn" type="button" aria-label="축소">−</button>
-                <button id="mapFit" class="map-icon-btn map-fit-btn" type="button" aria-label="전체 보기">□</button>
-              </div>
-              <div class="hud">
-                <div class="hud-card">
-                  <span class="hud-label">Zoom</span>
-                  <strong id="zoomValue">-</strong>
-                </div>
-                <div class="hud-card hud-card-camera">
-                  <span class="hud-label">Camera XY</span>
-                  <strong id="cameraPointValue">-</strong>
-                </div>
-                <div class="hud-card">
-                  <span class="hud-label">Scale</span>
-                  <strong id="scaleValue">-</strong>
-                </div>
-              </div>
-              <div class="map-vertical-scrollbar" id="mapVerticalScrollbar" role="scrollbar" aria-label="지도 세로 이동" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-                <button class="map-scroll-arrow map-scroll-arrow-up" id="mapScrollUp" type="button" aria-label="위로 이동"></button>
-                <div class="map-scroll-track" id="mapScrollTrack">
-                  <div class="map-scroll-thumb" id="mapScrollThumb"></div>
-                </div>
-                <button class="map-scroll-arrow map-scroll-arrow-down" id="mapScrollDown" type="button" aria-label="아래로 이동"></button>
-              </div>
-              <div class="map-horizontal-scrollbar" id="mapHorizontalScrollbar" role="scrollbar" aria-label="지도 좌우 이동" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-                <button class="map-scroll-arrow map-scroll-arrow-left" id="mapScrollLeft" type="button" aria-label="왼쪽 이동"></button>
-                <div class="map-scroll-track" id="mapHorizontalScrollTrack">
-                  <div class="map-scroll-thumb" id="mapHorizontalScrollThumb"></div>
-                </div>
-                <button class="map-scroll-arrow map-scroll-arrow-right" id="mapScrollRight" type="button" aria-label="오른쪽 이동"></button>
-              </div>
-              <div class="map-minimap-layer">
+            <div class="map-minimap-layer">
+              <div class="case-summary-panel">
                 <div class="map-layer-selector" id="mapLayerSelector" aria-label="지도 레이어 선택"></div>
                 <div class="map-minimap-preview">
                   <canvas id="rtsMiniMapCanvas" class="rts-minimap-canvas"></canvas>
@@ -179,22 +125,74 @@
                     </div>
                   </div>
                 </div>
-                <div class="case-comments-panel">
-                  <h3>Comments</h3>
-                  <textarea id="caseCommentInput" class="case-comment-input" placeholder="Add a comment."></textarea>
-                  <button id="caseCommentSubmit" class="case-comment-submit" type="button">Submit</button>
-                  <div id="caseCommentList" class="case-comment-list">
-                    <div class="case-comment">
-                      <div class="case-comment-author"><span class="case-avatar">MK</span><strong>Mike</strong></div>
-                      <p>The severity of the pest seems to improve.</p>
-                      <time>12/11/2024 - 10:00</time>
-                    </div>
-                    <div class="case-comment">
-                      <div class="case-comment-author"><span class="case-avatar case-avatar-alt">FC</span><strong>Francis</strong></div>
-                      <p>This issue has been confirmed by me but it's not treated yet.</p>
-                      <time>10/11/2024 - 14:31</time>
-                    </div>
+              </div>
+              <div class="case-comments-panel">
+                <h3>Comments</h3>
+                <textarea id="caseCommentInput" class="case-comment-input" placeholder="Add a comment."></textarea>
+                <button id="caseCommentSubmit" class="case-comment-submit" type="button">Submit</button>
+                <div id="caseCommentList" class="case-comment-list">
+                  <div class="case-comment">
+                    <div class="case-comment-author"><span class="case-avatar">MK</span><strong>Mike</strong></div>
+                    <p>The severity of the pest seems to improve.</p>
+                    <time>12/11/2024 - 10:00</time>
                   </div>
+                  <div class="case-comment">
+                    <div class="case-comment-author"><span class="case-avatar case-avatar-alt">FC</span><strong>Francis</strong></div>
+                    <p>This issue has been confirmed by me but it's not treated yet.</p>
+                    <time>10/11/2024 - 14:31</time>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="map-main-layer">
+              <div class="map-card-header">
+                <div class="map-card-title">
+                  <h1>Detections</h1>
+                </div>
+                <div class="map-header-metrics">
+                  <div class="map-resource-hud" id="mapCropLegend"></div>
+                </div>
+                <button class="open-details-btn" type="button">Open details</button>
+              </div>
+              <div id="mapViewport" class="map-viewport">
+                <div id="tilePane" class="tile-pane"></div>
+                <div id="detailPane" class="detail-pane"></div>
+                <div id="annotationPane" class="annotation-pane"></div>
+                <div id="markerPane" class="marker-pane"></div>
+                <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+                <div id="segmentTooltip" class="segment-tooltip" hidden></div>
+                <div class="map-control-stack" aria-label="지도 컨트롤">
+                  <button id="mapZoomIn" class="map-icon-btn" type="button" aria-label="확대">+</button>
+                  <button id="mapZoomOut" class="map-icon-btn" type="button" aria-label="축소">−</button>
+                  <button id="mapFit" class="map-icon-btn map-fit-btn" type="button" aria-label="전체 보기">□</button>
+                </div>
+                <div class="hud">
+                  <div class="hud-card">
+                    <span class="hud-label">Zoom</span>
+                    <strong id="zoomValue">-</strong>
+                  </div>
+                  <div class="hud-card hud-card-camera">
+                    <span class="hud-label">Camera XY</span>
+                    <strong id="cameraPointValue">-</strong>
+                  </div>
+                  <div class="hud-card">
+                    <span class="hud-label">Scale</span>
+                    <strong id="scaleValue">-</strong>
+                  </div>
+                </div>
+                <div class="map-vertical-scrollbar" id="mapVerticalScrollbar" role="scrollbar" aria-label="지도 세로 이동" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+                  <button class="map-scroll-arrow map-scroll-arrow-up" id="mapScrollUp" type="button" aria-label="위로 이동"></button>
+                  <div class="map-scroll-track" id="mapScrollTrack">
+                    <div class="map-scroll-thumb" id="mapScrollThumb"></div>
+                  </div>
+                  <button class="map-scroll-arrow map-scroll-arrow-down" id="mapScrollDown" type="button" aria-label="아래로 이동"></button>
+                </div>
+                <div class="map-horizontal-scrollbar" id="mapHorizontalScrollbar" role="scrollbar" aria-label="지도 좌우 이동" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+                  <button class="map-scroll-arrow map-scroll-arrow-left" id="mapScrollLeft" type="button" aria-label="왼쪽 이동"></button>
+                  <div class="map-scroll-track" id="mapHorizontalScrollTrack">
+                    <div class="map-scroll-thumb" id="mapHorizontalScrollThumb"></div>
+                  </div>
+                  <button class="map-scroll-arrow map-scroll-arrow-right" id="mapScrollRight" type="button" aria-label="오른쪽 이동"></button>
                 </div>
               </div>
             </div>
