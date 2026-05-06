@@ -577,8 +577,8 @@ const INITIAL_MAP_VIEW = {
 };
 const MAP_LAYER_CONTROL_ORDER = ["disease_pest_risk", "growth_status"];
 const MAP_LAYER_CONTROL_LABELS = {
-  disease_pest_risk: "병충해 위험",
-  growth_status: "생육 상태",
+  disease_pest_risk: "Pest Risk",
+  growth_status: "Growth Status",
 };
 
 function getActiveLayer() {
@@ -899,15 +899,45 @@ function getDiseaseInfo(seed, fallback = "") {
   return DISEASE_LABELS[Math.abs(seed) % DISEASE_LABELS.length];
 }
 
+function seededUnit(seed, salt) {
+  return (stableHash(`${seed}:${salt}`) % 10000) / 10000;
+}
+
+function seededRange(seed, salt, min, max) {
+  return min + seededUnit(seed, salt) * (max - min);
+}
+
+function seededInt(seed, salt, min, max) {
+  return Math.floor(seededRange(seed, salt, min, max + 1));
+}
+
+const DETECTION_BOX_LAYOUTS = [
+  [
+    { x: 13, y: 16 }, { x: 42, y: 22 }, { x: 64, y: 54 }, { x: 21, y: 66 },
+  ],
+  [
+    { x: 55, y: 14 }, { x: 18, y: 35 }, { x: 67, y: 42 }, { x: 34, y: 64 },
+  ],
+  [
+    { x: 22, y: 18 }, { x: 52, y: 38 }, { x: 12, y: 58 }, { x: 70, y: 62 },
+  ],
+  [
+    { x: 63, y: 20 }, { x: 31, y: 28 }, { x: 47, y: 60 }, { x: 15, y: 48 },
+  ],
+  [
+    { x: 16, y: 24 }, { x: 58, y: 18 }, { x: 38, y: 48 }, { x: 71, y: 57 },
+  ],
+];
+
 function normalizeDetectionBox(box) {
-  const w = clamp(Number(box.w) || 22, 14, 42);
-  const h = clamp(Number(box.h) || 20, 18, 36);
+  const w = clamp(Number(box.w) || 22, 11, 48);
+  const h = clamp(Number(box.h) || 20, 12, 42);
   return {
     ...box,
     w,
     h,
-    x: clamp(Number(box.x) || 0, 3, 97 - w),
-    y: clamp(Number(box.y) || 0, 4, 96 - h),
+    x: clamp(Number(box.x) || 0, 2, 98 - w),
+    y: clamp(Number(box.y) || 0, 3, 97 - h),
   };
 }
 
@@ -951,20 +981,46 @@ function makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected) {
   const value = Number(riskItem.value) || 0;
   if (value < 45 && !selected) return [];
   const seed = stableHash(`${frame.id}:${cameraName}:${riskItem.id || ""}`);
-  if (!selected && seed % 5 > 1) return [];
+  if (!selected && seededUnit(seed, "visible") > (value >= 70 ? 0.42 : 0.24)) return [];
   const count = selected
-    ? (value >= 70 || seed % 4 === 0 ? 2 : 1)
-    : 1;
+    ? (value >= 70 ? seededInt(seed, "selected-high-count", 2, 4) : seededInt(seed, "selected-count", 1, 3))
+    : (value >= 70 && seededUnit(seed, "extra") > 0.58 ? 2 : 1);
+  const layout = DETECTION_BOX_LAYOUTS[seed % DETECTION_BOX_LAYOUTS.length];
+  const dominantDisease = getDiseaseInfo(seed, riskItem.label);
   const boxes = [];
   for (let index = 0; index < count; index += 1) {
     const localSeed = stableHash(`${seed}:${index}`);
-    const disease = getDiseaseInfo(localSeed, riskItem.label);
-    const wide = disease.id === "thrips" || disease.id === "gray-mold" || localSeed % 6 === 0;
-    const compact = disease.id === "spider-mite";
-    const w = compact ? 16 + (localSeed % 10) : wide ? 30 + (localSeed % 12) : 19 + (localSeed % 14);
-    const h = compact ? 15 + ((localSeed >> 2) % 9) : wide ? 17 + ((localSeed >> 3) % 10) : 18 + ((localSeed >> 2) % 15);
-    const x = 7 + ((localSeed >> 5) % Math.max(1, Math.round(82 - w)));
-    const y = 10 + ((localSeed >> 9) % Math.max(1, Math.round(78 - h)));
+    const disease = index === 0 || seededUnit(localSeed, "same-class") > 0.28
+      ? dominantDisease
+      : getDiseaseInfo(localSeed);
+    const wide = disease.id === "gray-mold"
+      || disease.id === "anthracnose"
+      || (disease.id === "thrips" && seededUnit(localSeed, "wide-thrips") > 0.42);
+    const compact = disease.id === "spider-mite"
+      || (disease.id === "powdery-mildew" && seededUnit(localSeed, "powdery-small") > 0.48);
+    const elongated = seededUnit(localSeed, "elongated") > 0.78;
+    const w = elongated
+      ? seededRange(localSeed, "w-long", 32, 47)
+      : compact
+        ? seededRange(localSeed, "w-compact", 12, 23)
+        : wide
+          ? seededRange(localSeed, "w-wide", 25, 42)
+          : seededRange(localSeed, "w-mid", 18, 32);
+    const h = elongated
+      ? seededRange(localSeed, "h-long", 14, 23)
+      : compact
+        ? seededRange(localSeed, "h-compact", 13, 24)
+        : wide
+          ? seededRange(localSeed, "h-wide", 17, 34)
+          : seededRange(localSeed, "h-mid", 17, 31);
+    const anchor = layout[index % layout.length];
+    const spill = Math.floor(index / layout.length);
+    const x = anchor.x
+      + seededRange(localSeed, "x-jitter", -8, 8)
+      + spill * seededRange(localSeed, "x-spill", -5, 5);
+    const y = anchor.y
+      + seededRange(localSeed, "y-jitter", -7, 9)
+      + spill * seededRange(localSeed, "y-spill", -4, 6);
     boxes.push({
       x,
       y,
@@ -1245,6 +1301,9 @@ class TileMap {
     this.centerY = manifest.image_height / 2;
     this.pointerAnchor = null;
     this.drag = null;
+    this.activePointers = new Map();
+    this.pinch = null;
+    this.lastTap = null;
     this.renderFrame = 0;
     this.destroyed = false;
     this.handlers = null;
@@ -1271,6 +1330,9 @@ class TileMap {
       cancelAnimationFrame(this.renderFrame);
       this.renderFrame = 0;
     }
+    this.activePointers.clear();
+    this.pinch = null;
+    this.lastTap = null;
     if (this.handlers) {
       this.container.removeEventListener("wheel", this.handlers.wheel);
       this.container.removeEventListener("pointerdown", this.handlers.pointerdown);
@@ -1328,6 +1390,83 @@ class TileMap {
   }
 
   bind() {
+    const isTouchLikePointer = (event) => event.pointerType && event.pointerType !== "mouse";
+    const rememberPointer = (event) => {
+      if (!isTouchLikePointer(event)) return;
+      this.activePointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    };
+    const forgetPointer = (event) => {
+      if (!isTouchLikePointer(event)) return;
+      this.activePointers.delete(event.pointerId);
+    };
+    const getPinchMetrics = () => {
+      const points = Array.from(this.activePointers.values());
+      if (points.length < 2) return null;
+      const [first, second] = points;
+      const dx = second.clientX - first.clientX;
+      const dy = second.clientY - first.clientY;
+      const distance = Math.hypot(dx, dy);
+      if (!Number.isFinite(distance) || distance < 8) return null;
+      const rect = this.container.getBoundingClientRect();
+      return {
+        distance,
+        anchor: {
+          x: clamp((first.clientX + second.clientX) / 2 - rect.left, 0, rect.width),
+          y: clamp((first.clientY + second.clientY) / 2 - rect.top, 0, rect.height),
+        },
+      };
+    };
+    const beginPinch = () => {
+      const metrics = getPinchMetrics();
+      if (!metrics) return false;
+      this.pinch = metrics;
+      this.drag = null;
+      this.container.classList.add("is-dragging");
+      return true;
+    };
+    const updatePinch = () => {
+      const metrics = getPinchMetrics();
+      if (!metrics) return;
+      if (!this.pinch) {
+        this.pinch = metrics;
+        return;
+      }
+      const dx = metrics.anchor.x - this.pinch.anchor.x;
+      const dy = metrics.anchor.y - this.pinch.anchor.y;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        this.panBy(dx, dy);
+      }
+      const zoomDelta = Math.log2(metrics.distance / this.pinch.distance);
+      if (Number.isFinite(zoomDelta) && Math.abs(zoomDelta) > 0.005) {
+        this.zoomBy(zoomDelta, metrics.anchor);
+      }
+      this.pinch = metrics;
+    };
+    const handleDoubleTapZoom = (event) => {
+      const now = event.timeStamp || performance.now();
+      const tap = {
+        time: now,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      };
+      const lastTap = this.lastTap;
+      this.lastTap = tap;
+      if (!lastTap) return false;
+      const elapsed = now - lastTap.time;
+      const distance = Math.hypot(event.clientX - lastTap.clientX, event.clientY - lastTap.clientY);
+      if (elapsed > 320 || distance > 30) return false;
+      this.lastTap = null;
+      const anchor = this.getAnchorFromEvent(event);
+      const zoomOutTarget = clamp(this.manifest.max_zoom - 0.8, this.minZoom, this.maxZoom);
+      const zoomInTarget = clamp(this.currentZoom + 1, this.minZoom, this.maxZoom);
+      const targetZoom = this.currentZoom >= this.maxZoom - 0.15 ? zoomOutTarget : zoomInTarget;
+      this.zoomBy(targetZoom - this.currentZoom, anchor);
+      return true;
+    };
+
     this.handlers = {
       wheel: (event) => {
         event.preventDefault();
@@ -1336,8 +1475,16 @@ class TileMap {
         this.zoomBy(delta, anchor);
       },
       pointerdown: (event) => {
+        if (isTouchLikePointer(event)) {
+          event.preventDefault();
+          rememberPointer(event);
+        }
         this.updatePointerAnchor(event);
         this.container.setPointerCapture(event.pointerId);
+        if (this.activePointers.size >= 2) {
+          beginPinch();
+          return;
+        }
         this.drag = {
           id: event.pointerId,
           startX: event.clientX,
@@ -1352,13 +1499,26 @@ class TileMap {
         this.updatePointerAnchor(event);
       },
       pointermove: (event) => {
+        if (isTouchLikePointer(event)) {
+          event.preventDefault();
+          rememberPointer(event);
+          if (this.pinch || this.activePointers.size >= 2) {
+            if (!this.pinch) beginPinch();
+            updatePinch();
+            return;
+          }
+        }
         this.updatePointerAnchor(event);
         if (this.drag && this.drag.id === event.pointerId) {
           const dx = event.clientX - this.drag.lastX;
           const dy = event.clientY - this.drag.lastY;
           this.drag.lastX = event.clientX;
           this.drag.lastY = event.clientY;
-          if (Math.abs(event.clientX - this.drag.startX) > 3 || Math.abs(event.clientY - this.drag.startY) > 3) {
+          const moveThreshold = isTouchLikePointer(event) ? 10 : 3;
+          if (
+            Math.abs(event.clientX - this.drag.startX) > moveThreshold ||
+            Math.abs(event.clientY - this.drag.startY) > moveThreshold
+          ) {
             this.drag.moved = true;
           }
           this.panBy(dx, dy);
@@ -1383,11 +1543,26 @@ class TileMap {
         }
       },
       endPointer: (event) => {
+        const isTouchLike = isTouchLikePointer(event);
+        if (isTouchLike) {
+          event.preventDefault();
+          forgetPointer(event);
+        }
+        if (this.pinch) {
+          if (this.activePointers.size >= 2) {
+            beginPinch();
+          } else {
+            this.pinch = null;
+            this.container.classList.remove("is-dragging");
+          }
+          return;
+        }
         if (!this.drag || this.drag.id !== event.pointerId) return;
         const wasClick = !this.drag.moved;
         this.drag = null;
         this.container.classList.remove("is-dragging");
-        if (wasClick) {
+        if (wasClick && event.type !== "pointercancel") {
+          if (isTouchLike && handleDoubleTapZoom(event)) return;
           const rect = this.container.getBoundingClientRect();
           const world = this.screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
           // If layer overlay is active, check segment first
@@ -2041,7 +2216,7 @@ class TileMap {
       .filter((detection) => !detection.camera || detection.camera === cameraName);
 
     if (realDetections.length) {
-      const boxes = realDetections.map((detection, index) => {
+      const boxes = realDetections.flatMap((detection, index) => {
         const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
         if (bbox && camera.width && camera.height) {
           const disease = getDiseaseInfo(index, detection.label);
@@ -2049,7 +2224,7 @@ class TileMap {
           const y1 = clamp((Math.min(bbox[1], bbox[3]) / camera.height) * 100, 4, 92);
           const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 14, 97);
           const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 18, 96);
-          return {
+          return [{
             x: x1,
             y: y1,
             w: x2 - x1,
@@ -2057,15 +2232,14 @@ class TileMap {
             label: disease.label,
             diseaseId: disease.id,
             severity: detection.severity,
-          };
+          }];
         }
-        const seed = stableHash(`${detection.id}:${cameraName}:${index}`);
         return makeSyntheticDetectionBoxes(frame, cameraName, {
           id: detection.id,
           label: detection.label,
           value: detection.severity === "high" ? 85 : detection.severity === "medium" ? 62 : 35,
           severity: detection.severity,
-        }, true)[0] || null;
+        }, true).slice(0, 3);
       }).filter(Boolean);
       return layoutDetectionBoxes(boxes, `${frame.id}:${cameraName}:real`);
     }
@@ -2075,7 +2249,7 @@ class TileMap {
     return makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected);
   }
 
-  isCameraCellFullyVisible(frame, cameraName) {
+  isCameraCellOverlayVisible(frame, cameraName) {
     const rect = frame.rect_px;
     const quadrantOffsets = {
       front_left: { x: 0.0, y: 0.0 },
@@ -2093,18 +2267,23 @@ class TileMap {
       rect.left + rect.width * (quadrant.x + 0.5),
       rect.top + rect.height * (quadrant.y + 0.5),
     );
-    const pad = 1;
-    return topLeft.x >= -pad
-      && topLeft.y >= -pad
-      && bottomRight.x <= this.viewportWidth + pad
-      && bottomRight.y <= this.viewportHeight + pad;
+    const cellW = bottomRight.x - topLeft.x;
+    const cellH = bottomRight.y - topLeft.y;
+    if (cellW <= 0 || cellH <= 0) return false;
+    const visibleLeft = clamp(topLeft.x, 0, this.viewportWidth);
+    const visibleTop = clamp(topLeft.y, 0, this.viewportHeight);
+    const visibleRight = clamp(bottomRight.x, 0, this.viewportWidth);
+    const visibleBottom = clamp(bottomRight.y, 0, this.viewportHeight);
+    const visibleW = visibleRight - visibleLeft;
+    const visibleH = visibleBottom - visibleTop;
+    return visibleW > 1 && visibleH > 1;
   }
 
   updateDetailFrameDetectionOverlays(detail, frame) {
     for (const cell of detail.querySelectorAll(".detail-cell-wrap")) {
       cell.querySelector(".pest-box-layer")?.remove();
       const cameraName = cell.dataset.cameraName;
-      if (!this.isCameraCellFullyVisible(frame, cameraName)) continue;
+      if (!this.isCameraCellOverlayVisible(frame, cameraName)) continue;
       const boxes = this.getDetectionBoxesForCamera(frame, cameraName);
       if (!boxes.length) continue;
       const layer = document.createElement("div");
@@ -3827,7 +4006,6 @@ function renderMapLayerControls(layers) {
 
   selector.hidden = false;
   selector.innerHTML = `
-    <div class="map-layer-title">MAP LAYERS</div>
     <div class="map-layer-options"></div>
   `;
   const options = selector.querySelector(".map-layer-options");
