@@ -10,11 +10,12 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .config import BuildConfig
 from .crop_stats import build_crop_summary_payload
 from .layers import generate_demo_layers_runtime
+from .object_detections import list_object_detection_models, load_object_detections
 from .pest_detections import load_pest_detections
 from .tasks import generate_tasks
 from .trends import generate_trends
@@ -22,6 +23,7 @@ from .trends import generate_trends
 
 TILE_RE = re.compile(r"^/tiles/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.(png|jpg)$")
 IMAGE_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/image/(\d+)/([a-z_]+)\.jpg$")
+IMAGE_LOD_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/image/(\d+)/([a-z_]+)/w(\d+)\.jpg$")
 CONTACT_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/contact-sheet/(\d+)\.jpg$")
 SESSION_MANIFEST_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/manifest$")
 SESSION_FRAMES_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/frames$")
@@ -32,6 +34,8 @@ SESSION_TASKS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/tasks$")
 SESSION_TRENDS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/trends$")
 SESSION_CROP_SUMMARY_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/crop-summary$")
 SESSION_PEST_DETECTIONS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/pest-detections$")
+SESSION_GROWTH_DETECTIONS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/growth-detections$")
+SESSION_GROWTH_DETECTION_MODELS_RE = re.compile(r"^/api/devices/([^/]+)/sessions/([^/]+)/growth-detection-models$")
 
 
 class SessionData:
@@ -282,6 +286,35 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
             self.serve_json(payload, send_body=send_body)
             return
 
+        growth_detection_models_match = SESSION_GROWTH_DETECTION_MODELS_RE.match(path)
+        if growth_detection_models_match:
+            device, session = growth_detection_models_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            self.serve_json(list_object_detection_models(data.config, kind="growth"), send_body=send_body)
+            return
+
+        growth_detections_match = SESSION_GROWTH_DETECTIONS_RE.match(path)
+        if growth_detections_match:
+            device, session = growth_detections_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            query = parse_qs(parsed.query)
+            model_id = query.get("model", [None])[0]
+            payload = load_object_detections(
+                config=data.config,
+                manifest=data.manifest,
+                frames_payload=data.frames,
+                kind="growth",
+                model_id=model_id,
+            )
+            self.serve_json(payload, send_body=send_body)
+            return
+
         tile_match = TILE_RE.match(path)
         if tile_match:
             device, session, z, x, y, _ext = tile_match.groups()
@@ -294,6 +327,25 @@ class PictureMapsHandler(SimpleHTTPRequestHandler):
                 self.serve_file(tile_path, send_body=send_body, cache_seconds=3600)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Tile not found")
+            return
+
+        image_lod_match = IMAGE_LOD_RE.match(path)
+        if image_lod_match:
+            device, session, frame_id, camera_name, width = image_lod_match.groups()
+            data = self.sessions.get((device, session))
+            if not data:
+                self.send_error(HTTPStatus.NOT_FOUND, "Session not found")
+                return
+            frame = data.server_index["frames"].get(frame_id)
+            if not frame:
+                self.send_error(HTTPStatus.NOT_FOUND, "Frame not found")
+                return
+            camera = frame["cameras"].get(camera_name)
+            lod_path = camera.get("lods", {}).get(width) if camera else None
+            if not lod_path:
+                self.send_error(HTTPStatus.NOT_FOUND, "Image LOD not found")
+                return
+            self.serve_file(Path(lod_path), send_body=send_body, cache_seconds=3600)
             return
 
         image_match = IMAGE_RE.match(path)

@@ -800,6 +800,7 @@ let activeDeviceName = null;      // currently selected device
 let currentCropSummary = null;
 let currentInsights = null;
 let currentPestDetections = null;
+let currentGrowthDetections = null;
 let showRiskOverlay = true;
 
 // ─── Task store ───────────────────────────────────────────────────────────────
@@ -820,6 +821,8 @@ let currentLayers = null;          // full layers.json payload
 let activeLayerId = null;          // which layer is rendered on map
 let showLayerOverlay = false;      // overlay on/off
 let activeMiniMapLayerIds = new Set();
+let currentGrowthDetectionModels = [];
+let activeGrowthDetectionModelId = "yolo11s";
 let hoveredSegmentId = null;
 let selectedSegmentId = null;
 let selectedPestDetectionId = null;
@@ -904,6 +907,32 @@ function setMiniMapLayerVisible(layerId, visible) {
   currentMap?.queueRender();
 }
 
+async function loadGrowthDetectionsForModel(modelId) {
+  const summary = document.getElementById("datasetSummary");
+  const deviceName = summary?.dataset.deviceName;
+  const sessionName = summary?.dataset.sessionName;
+  if (!deviceName || !sessionName || !modelId) return;
+  activeGrowthDetectionModelId = modelId;
+  updateGrowthModelControlStates({ loading: true });
+  try {
+    const payload = await fetchJson(
+      `/api/devices/${deviceName}/sessions/${sessionName}/growth-detections?model=${encodeURIComponent(modelId)}`,
+    );
+    currentGrowthDetections = normalizeGrowthDetections(payload, sessionName);
+    if (currentMap) currentMap.setGrowthDetections(payload);
+  } finally {
+    updateGrowthModelControlStates({ loading: false });
+  }
+}
+
+function isPestRiskPhotoOverlayEnabled() {
+  return activeMiniMapLayerIds.has("disease_pest_risk");
+}
+
+function isGrowthStatusPhotoOverlayEnabled() {
+  return activeMiniMapLayerIds.has("growth_status");
+}
+
 function normalizeRailKey(value) {
   const text = String(value || "").trim().toLowerCase();
   const match = text.match(/^(?:rail[_-]?|r)(\d+)$/);
@@ -985,6 +1014,97 @@ function normalizePestDetections(payload, sessionName = "-") {
       })
       .filter(Boolean),
   };
+}
+
+const GROWTH_DETECTION_STAGES = {
+  raw: {
+    id: "raw",
+    labelEn: "Raw",
+    labelKr: "미숙",
+    severity: "low",
+  },
+  midi: {
+    id: "midi",
+    labelEn: "Mid-ripe",
+    labelKr: "중숙",
+    severity: "medium",
+  },
+  ripe: {
+    id: "ripe",
+    labelEn: "Ripe",
+    labelKr: "완숙",
+    severity: "high",
+  },
+};
+
+function normalizeGrowthStage(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "midi" || text === "mid-ripe" || text === "midripe" || text.includes("mid")) return "midi";
+  if (text === "raw" || text === "unripe" || text.includes("unripe")) return "raw";
+  if (text === "ripe" || text.includes("ripe")) return "ripe";
+  return "raw";
+}
+
+function getGrowthDetectionStageInfo(value) {
+  return GROWTH_DETECTION_STAGES[normalizeGrowthStage(value)] || GROWTH_DETECTION_STAGES.raw;
+}
+
+function formatGrowthDetectionLabel(value) {
+  const info = getGrowthDetectionStageInfo(value);
+  return currentLanguage === "kr" ? info.labelKr : info.labelEn;
+}
+
+function normalizeGrowthDetections(payload, sessionName = "-") {
+  const detections = Array.isArray(payload?.detections) ? payload.detections : [];
+  return {
+    available: Boolean(payload?.available),
+    session: payload?.session || sessionName,
+    source: payload?.source || null,
+    model: payload?.model || null,
+    detections: detections
+      .map((item, index) => {
+        const frameId = Number(item?.frame_id);
+        if (!Number.isFinite(frameId)) return null;
+        const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
+          ? item.bbox.slice(0, 4).map((coord) => Number(coord))
+          : null;
+        const label = item?.label || "raw";
+        const stage = getGrowthDetectionStageInfo(label);
+        return {
+          id: item?.id || `growth_${Math.round(frameId)}_${index + 1}`,
+          frame_id: Math.round(frameId),
+          rail_name: item?.rail_name || "",
+          odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
+          label,
+          stage: stage.id,
+          severity: stage.severity,
+          class_id: Number.isFinite(Number(item?.class_id)) ? Number(item.class_id) : null,
+          confidence: toConfidenceRatio(item?.confidence),
+          camera: item?.camera || null,
+          bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
+          source: item?.source || payload?.source || null,
+        };
+      })
+      .filter(Boolean),
+  };
+}
+
+function normalizeGrowthDetectionModels(payload) {
+  const models = Array.isArray(payload?.models) ? payload.models : [];
+  return models
+    .map((model) => ({
+      id: String(model?.id || "").trim(),
+      label: String(model?.label || model?.id || "").trim(),
+      available: Boolean(model?.available),
+      dataPath: model?.data_path || null,
+    }))
+    .filter((model) => model.id);
+}
+
+function chooseGrowthDetectionModel(models, preferred = activeGrowthDetectionModelId) {
+  if (models.some((model) => model.id === preferred && model.available)) return preferred;
+  if (models.some((model) => model.id === "yolo11s" && model.available)) return "yolo11s";
+  return models.find((model) => model.available)?.id || models[0]?.id || "yolo11s";
 }
 
 function getHarvestStageInfo(value) {
@@ -1534,6 +1654,41 @@ function computeViewerMaxZoom(manifest, frames) {
   return sourceResolutionZoom;
 }
 
+function getCameraImageCandidates(frame, camera) {
+  const candidates = [];
+  if (isSingleCameraFrame(frame) && frame.contact_sheet_url && frame.rect_px?.width) {
+    candidates.push({
+      width: frame.rect_px.width,
+      url: frame.contact_sheet_url,
+    });
+  }
+  for (const lod of camera.lods || []) {
+    if (lod?.url && lod?.width) {
+      candidates.push({
+        width: Number(lod.width),
+        url: lod.url,
+      });
+    }
+  }
+  if (camera.url && camera.width) {
+    candidates.push({
+      width: Number(camera.width),
+      url: camera.url,
+    });
+  }
+  const deduped = new Map();
+  for (const candidate of candidates) {
+    if (!Number.isFinite(candidate.width) || candidate.width <= 0 || !candidate.url) continue;
+    deduped.set(candidate.url, candidate);
+  }
+  return [...deduped.values()].sort((a, b) => a.width - b.width);
+}
+
+function buildCameraSrcSet(frame, camera) {
+  const candidates = getCameraImageCandidates(frame, camera);
+  return candidates.map((candidate) => `${candidate.url} ${Math.round(candidate.width)}w`).join(", ");
+}
+
 class TileMap {
   constructor({
     container,
@@ -1556,6 +1711,7 @@ class TileMap {
     manifest,
     frames,
     pestDetections,
+    growthDetections,
     onSelect,
     onViewChange,
     maxZoom,
@@ -1585,6 +1741,7 @@ class TileMap {
     this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
     this.railTrackWorldBounds = this.computeRailTrackWorldBounds();
     this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
+    this.growthDetections = normalizeGrowthDetections(growthDetections, manifest.session_name);
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
@@ -1635,6 +1792,12 @@ class TileMap {
     this.bindVerticalScroll();
     this.bindHorizontalScroll();
     this.fitToBounds(false);
+  }
+
+  setGrowthDetections(payload) {
+    this.growthDetections = normalizeGrowthDetections(payload, this.manifest.session_name);
+    currentGrowthDetections = this.growthDetections;
+    this.queueRender();
   }
 
   destroy() {
@@ -2491,7 +2654,7 @@ class TileMap {
     };
   }
 
-  createDetailFrame(frame, { fetchPriority = "auto" } = {}) {
+  createDetailFrame(frame, { fetchPriority = "auto", displayWidth = 0 } = {}) {
     const wrapper = document.createElement("div");
     wrapper.className = "detail-frame";
     wrapper.dataset.frameId = String(frame.id);
@@ -2513,6 +2676,9 @@ class TileMap {
         image.decoding = "async";
         image.loading = fetchPriority === "high" ? "eager" : "lazy";
         image.fetchPriority = fetchPriority;
+        const srcSet = buildCameraSrcSet(frame, camera);
+        if (srcSet) image.srcset = srcSet;
+        if (displayWidth > 0) image.sizes = `${Math.ceil(displayWidth)}px`;
         image.src = camera.url;
         cell.appendChild(image);
       } else {
@@ -2527,14 +2693,16 @@ class TileMap {
     return wrapper;
   }
 
-  updateDetailFrameLoadPriority(detail, fetchPriority) {
+  updateDetailFrameImageHints(detail, fetchPriority, displayWidth) {
     for (const image of detail.querySelectorAll("img.detail-cell")) {
       image.loading = fetchPriority === "high" ? "eager" : "lazy";
       image.fetchPriority = fetchPriority;
+      if (displayWidth > 0) image.sizes = `${Math.ceil(displayWidth)}px`;
     }
   }
 
-  getDetectionBoxesForCamera(frame, cameraName) {
+  getPestDetectionBoxesForCamera(frame, cameraName) {
+    if (!isPestRiskPhotoOverlayEnabled()) return [];
     const camera = frame.cameras?.[cameraName];
     if (!camera) return [];
     const realDetections = (this.pestDetections.detections || [])
@@ -2551,6 +2719,7 @@ class TileMap {
           const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 14, 97);
           const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 18, 96);
           return [{
+            kind: "pest",
             x: x1,
             y: y1,
             w: x2 - x1,
@@ -2565,14 +2734,53 @@ class TileMap {
           label: detection.label,
           value: detection.severity === "high" ? 85 : detection.severity === "medium" ? 62 : 35,
           severity: detection.severity,
-        }, true).slice(0, 3);
+        }, true).slice(0, 3).map((box) => ({ ...box, kind: "pest" }));
       }).filter(Boolean);
       return layoutDetectionBoxes(boxes, `${frame.id}:${cameraName}:real`);
     }
 
     const riskItem = findLayerItemForFrame("disease_pest_risk", frame);
     const selected = Number(frame.id) === Number(this.selectedFrameId);
-    return makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected);
+    return makeSyntheticDetectionBoxes(frame, cameraName, riskItem, selected)
+      .map((box) => ({ ...box, kind: "pest" }));
+  }
+
+  getGrowthDetectionBoxesForCamera(frame, cameraName) {
+    if (!isGrowthStatusPhotoOverlayEnabled()) return [];
+    const camera = frame.cameras?.[cameraName];
+    if (!camera?.width || !camera?.height) return [];
+    return (this.growthDetections.detections || [])
+      .filter((detection) => Number(detection.frame_id) === Number(frame.id))
+      .filter((detection) => !detection.camera || detection.camera === cameraName)
+      .map((detection) => {
+        const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
+        if (!bbox) return null;
+        const x1 = clamp((Math.min(bbox[0], bbox[2]) / camera.width) * 100, 0.5, 98);
+        const y1 = clamp((Math.min(bbox[1], bbox[3]) / camera.height) * 100, 0.5, 98);
+        const x2 = clamp((Math.max(bbox[0], bbox[2]) / camera.width) * 100, x1 + 2, 99.5);
+        const y2 = clamp((Math.max(bbox[1], bbox[3]) / camera.height) * 100, y1 + 2, 99.5);
+        const stage = getGrowthDetectionStageInfo(detection.stage || detection.label);
+        return {
+          kind: "growth",
+          x: x1,
+          y: y1,
+          w: x2 - x1,
+          h: y2 - y1,
+          label: formatGrowthDetectionLabel(detection.stage || detection.label),
+          stageId: stage.id,
+          severity: stage.severity,
+          confidence: detection.confidence,
+          compact: (x2 - x1) < 5.5 || (y2 - y1) < 4.2,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  getDetectionBoxesForCamera(frame, cameraName) {
+    return [
+      ...this.getPestDetectionBoxesForCamera(frame, cameraName),
+      ...this.getGrowthDetectionBoxesForCamera(frame, cameraName),
+    ];
   }
 
   isCameraCellOverlayVisible(frame, cameraName) {
@@ -2622,17 +2830,20 @@ class TileMap {
       const boxes = this.getDetectionBoxesForCamera(frame, cameraName);
       if (!boxes.length) continue;
       const layer = document.createElement("div");
-      layer.className = "pest-box-layer";
+      layer.className = "pest-box-layer detection-box-layer";
       for (const box of boxes) {
         const marker = document.createElement("div");
-        marker.className = `pest-detect-box severity-${box.severity || "medium"}`;
-        marker.dataset.disease = box.diseaseId || "";
+        const isGrowthBox = box.kind === "growth";
+        const compactClass = isGrowthBox && box.compact ? " is-compact" : "";
+        marker.className = `${isGrowthBox ? "growth-detect-box" : "pest-detect-box"} severity-${box.severity || "medium"}${compactClass}`;
+        if (isGrowthBox) marker.dataset.growthStage = box.stageId || "raw";
+        else marker.dataset.disease = box.diseaseId || "";
         marker.style.left = `${box.x}%`;
         marker.style.top = `${box.y}%`;
         marker.style.width = `${box.w}%`;
         marker.style.height = `${box.h}%`;
         const label = document.createElement("span");
-        label.className = "pest-detect-label";
+        label.className = isGrowthBox ? "growth-detect-label" : "pest-detect-label";
         label.textContent = box.label || getDiseaseInfo(0).label;
         marker.appendChild(label);
         layer.appendChild(marker);
@@ -2988,18 +3199,19 @@ class TileMap {
     for (const [index, item] of candidates.entries()) {
       const frame = item.frame;
       const rect = frame.rect_px;
+      const topLeft = this.worldToScreen(rect.left, rect.top);
+      const bottomRight = this.worldToScreen(rect.right, rect.bottom);
+      const screenW = Math.max(1, bottomRight.x - topLeft.x);
       wanted.add(frame.id);
       let detail = this.visibleDetails.get(frame.id);
       const fetchPriority = index < 6 ? "high" : "auto";
       if (!detail) {
-        detail = this.createDetailFrame(frame, { fetchPriority });
+        detail = this.createDetailFrame(frame, { fetchPriority, displayWidth: screenW });
         this.visibleDetails.set(frame.id, detail);
       } else {
-        this.updateDetailFrameLoadPriority(detail, fetchPriority);
+        this.updateDetailFrameImageHints(detail, fetchPriority, screenW);
       }
       this.updateDetailFrameDetectionOverlays(detail, frame);
-      const topLeft = this.worldToScreen(rect.left, rect.top);
-      const bottomRight = this.worldToScreen(rect.right, rect.bottom);
       detail.style.left = `${topLeft.x}px`;
       detail.style.top = `${topLeft.y}px`;
       detail.style.width = `${bottomRight.x - topLeft.x}px`;
@@ -4371,6 +4583,7 @@ function renderMapLayerControls(layers) {
   selector.hidden = false;
   selector.innerHTML = `
     <div class="map-layer-options"></div>
+    <div class="growth-model-options" aria-label="Growth detection model"></div>
   `;
   const options = selector.querySelector(".map-layer-options");
 
@@ -4399,7 +4612,47 @@ function renderMapLayerControls(layers) {
     options.appendChild(label);
   }
 
+  renderGrowthModelControls(selector);
   updateMapLayerControlStates();
+}
+
+function renderGrowthModelControls(selector = document.getElementById("mapLayerSelector")) {
+  const container = selector?.querySelector(".growth-model-options");
+  if (!container) return;
+  const models = currentGrowthDetectionModels.filter((model) => model.available);
+  if (!models.length) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = "";
+  for (const model of models) {
+    const label = document.createElement("label");
+    label.className = "growth-model-option";
+    label.dataset.modelId = model.id;
+    label.title = model.dataPath || model.label;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.name = "growth-detection-model";
+    checkbox.value = model.id;
+
+    const text = createElement("span", "growth-model-name", model.label || model.id);
+    label.append(checkbox, text);
+    label.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      if (!checkbox.checked) {
+        checkbox.checked = true;
+        return;
+      }
+      activeMiniMapLayerIds.add("growth_status");
+      updateMapLayerControlStates();
+      void loadGrowthDetectionsForModel(model.id);
+    });
+    container.appendChild(label);
+  }
+  updateGrowthModelControlStates();
 }
 
 function updateLayerRowStates() {
@@ -4416,6 +4669,17 @@ function updateMapLayerControlStates() {
   for (const option of document.querySelectorAll(".map-layer-option")) {
     const isActive = activeMiniMapLayerIds.has(option.dataset.layerId);
     option.classList.toggle("is-active", isActive);
+    const checkbox = option.querySelector("input[type='checkbox']");
+    if (checkbox) checkbox.checked = isActive;
+  }
+  updateGrowthModelControlStates();
+}
+
+function updateGrowthModelControlStates({ loading = false } = {}) {
+  for (const option of document.querySelectorAll(".growth-model-option")) {
+    const isActive = option.dataset.modelId === activeGrowthDetectionModelId;
+    option.classList.toggle("is-active", isActive);
+    option.classList.toggle("is-loading", loading && isActive);
     const checkbox = option.querySelector("input[type='checkbox']");
     if (checkbox) checkbox.checked = isActive;
   }
@@ -5157,6 +5421,30 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   if (loadToken !== currentSessionLoadToken) return null;
   currentPestDetections = normalizePestDetections(pestDetections, sessionName);
 
+  let growthModelPayload = null;
+  try {
+    growthModelPayload = await fetchJson(`/api/devices/${deviceName}/sessions/${sessionName}/growth-detection-models`);
+  } catch (_) {
+    growthModelPayload = null;
+  }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentGrowthDetectionModels = normalizeGrowthDetectionModels(growthModelPayload);
+  activeGrowthDetectionModelId = chooseGrowthDetectionModel(
+    currentGrowthDetectionModels,
+    growthModelPayload?.default_model || activeGrowthDetectionModelId,
+  );
+
+  let growthDetections = null;
+  try {
+    growthDetections = await fetchJson(
+      `/api/devices/${deviceName}/sessions/${sessionName}/growth-detections?model=${encodeURIComponent(activeGrowthDetectionModelId)}`,
+    );
+  } catch (_) {
+    growthDetections = null;
+  }
+  if (loadToken !== currentSessionLoadToken) return null;
+  currentGrowthDetections = normalizeGrowthDetections(growthDetections, sessionName);
+
   const datasetSummary = document.getElementById("datasetSummary");
   datasetSummary.dataset.summaryState = "loaded";
   datasetSummary.dataset.deviceName = deviceName;
@@ -5206,6 +5494,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     manifest,
     frames,
     pestDetections: currentPestDetections,
+    growthDetections: currentGrowthDetections,
     maxZoom: Math.max(computeViewerMaxZoom(manifest, frames), INITIAL_MAP_VIEW.zoom),
     onSelect: (frame) => renderSelection(frame, currentInsightsData),
     onViewChange: ({ zoom, screenPxPerMeter, centerX, centerY }) => {
@@ -5377,6 +5666,9 @@ async function bootstrap() {
     syncCaptureDateSelectors(sessionName);
     currentCropSummary = buildCropPanelPlaceholder(sessionName);
     currentPestDetections = normalizePestDetections(null, sessionName);
+    currentGrowthDetections = normalizeGrowthDetections(null, sessionName);
+    currentGrowthDetectionModels = [];
+    activeGrowthDetectionModelId = "yolo11s";
     selectedPestDetectionId = null;
     renderCropPanel(currentCropSummary);
     summary.dataset.summaryState = "loading";

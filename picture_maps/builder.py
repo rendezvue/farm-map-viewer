@@ -26,6 +26,7 @@ except AttributeError:
     RESAMPLE_LANCZOS = Image.LANCZOS
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+CAMERA_DETAIL_WIDTHS = (720,)
 
 
 def _free_cuda() -> None:
@@ -146,10 +147,33 @@ def render_contact_sheet_gpu(
     Image.fromarray(arr).save(destination, format="JPEG", quality=84)
 
 
+def camera_detail_path(config: BuildConfig, frame_id: int, camera_name: str, width: int) -> Path:
+    return config.detail_dir / f"{frame_id:05d}" / f"{camera_name}_w{width}.jpg"
+
+
+def scaled_dimensions(width: int | None, height: int | None, target_width: int) -> tuple[int, int] | None:
+    if not width or not height or width <= 0 or height <= 0 or width <= target_width:
+        return None
+    target_height = max(1, round(height * (target_width / width)))
+    return target_width, target_height
+
+
+def render_camera_detail(info: dict[str, Any], destination: Path, target_width: int) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with Image.open(info["path"]) as img:
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        if img.width <= target_width:
+            return
+        target_height = max(1, round(img.height * (target_width / img.width)))
+        resized = img.resize((target_width, target_height), RESAMPLE_LANCZOS)
+        resized.save(destination, format="JPEG", quality=86, optimize=True)
+
+
 def build_dataset(config: BuildConfig) -> dict[str, Any]:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     config.tiles_dir.mkdir(parents=True, exist_ok=True)
     config.cells_dir.mkdir(parents=True, exist_ok=True)
+    config.detail_dir.mkdir(parents=True, exist_ok=True)
 
     device_name = config.dataset_dir.parent.name
     session_name = config.dataset_dir.name
@@ -280,15 +304,30 @@ def build_contact_sheets(
         cameras_public: dict[str, Any] = {}
         cameras_private: dict[str, Any] = {}
         for camera_name, info in frame["cameras"].items():
+            lods_public: list[dict[str, Any]] = []
+            lods_private: dict[str, str] = {}
+            for target_width in CAMERA_DETAIL_WIDTHS:
+                dims = scaled_dimensions(info["width"], info["height"], target_width)
+                if not dims:
+                    continue
+                lods_public.append({
+                    "width": dims[0],
+                    "height": dims[1],
+                    "url": f'/api/devices/{device_name}/sessions/{session_name}/image/{frame["id"]}/{camera_name}/w{target_width}.jpg',
+                })
+                lods_private[str(target_width)] = str(camera_detail_path(config, frame["id"], camera_name, target_width))
+
             cameras_public[camera_name] = {
                 "filename": info["filename"],
                 "width": info["width"],
                 "height": info["height"],
                 "url": f'/api/devices/{device_name}/sessions/{session_name}/image/{frame["id"]}/{camera_name}.jpg',
+                "lods": lods_public,
             }
             cameras_private[camera_name] = {
                 "path": info["path"],
                 "filename": info["filename"],
+                "lods": lods_private,
             }
 
         public_frames.append(
@@ -317,6 +356,13 @@ def build_contact_sheets(
         frame, cell_path = args
         if not cell_path.exists():
             render_contact_sheet_gpu(frame, cell_path, layout["cell_width"], layout["cell_height"], device)
+        for camera_name, info in frame["cameras"].items():
+            for target_width in CAMERA_DETAIL_WIDTHS:
+                detail_path = camera_detail_path(config, frame["id"], camera_name, target_width)
+                if detail_path.exists():
+                    continue
+                if scaled_dimensions(info["width"], info["height"], target_width):
+                    render_camera_detail(info, detail_path, target_width)
 
     max_workers = min(8, os.cpu_count() or 4)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:

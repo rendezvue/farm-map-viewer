@@ -61,6 +61,10 @@ class BuildConfig:
         return self.output_dir / "cells"
 
     @property
+    def detail_dir(self) -> Path:
+        return self.output_dir / "detail"
+
+    @property
     def manifest_path(self) -> Path:
         return self.output_dir / "manifest.json"
 
