@@ -985,34 +985,53 @@ function toConfidenceRatio(value) {
   return clamp(numeric, 0, 1);
 }
 
+const EMPTY_DETECTIONS = Object.freeze([]);
+
+function buildDetectionFrameIndex(detections) {
+  const byFrame = new Map();
+  for (const detection of detections || []) {
+    const key = String(detection.frame_id);
+    const bucket = byFrame.get(key);
+    if (bucket) bucket.push(detection);
+    else byFrame.set(key, [detection]);
+  }
+  return byFrame;
+}
+
+function getFrameDetections(payload, frameId) {
+  return payload?.detectionsByFrame?.get(String(frameId)) || EMPTY_DETECTIONS;
+}
+
 function normalizePestDetections(payload, sessionName = "-") {
   const detections = Array.isArray(payload?.detections) ? payload.detections : [];
+  const normalized = detections
+    .map((item, index) => {
+      const frameId = Number(item?.frame_id);
+      if (!Number.isFinite(frameId)) return null;
+      const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
+        ? item.bbox.slice(0, 4).map((coord) => Number(coord))
+        : null;
+      return {
+        id: item?.id || `pest_${Math.round(frameId)}_${index + 1}`,
+        frame_id: Math.round(frameId),
+        rail_name: item?.rail_name || "",
+        odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
+        severity: normalizePestSeverity(item?.severity),
+        label: item?.label || "병충해",
+        confidence: toConfidenceRatio(item?.confidence),
+        camera: item?.camera || null,
+        bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
+        note: item?.note || null,
+        source: item?.source || payload?.source || null,
+      };
+    })
+    .filter(Boolean);
   return {
     available: Boolean(payload?.available),
     session: payload?.session || sessionName,
     source: payload?.source || null,
-    detections: detections
-      .map((item, index) => {
-        const frameId = Number(item?.frame_id);
-        if (!Number.isFinite(frameId)) return null;
-        const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
-          ? item.bbox.slice(0, 4).map((coord) => Number(coord))
-          : null;
-        return {
-          id: item?.id || `pest_${Math.round(frameId)}_${index + 1}`,
-          frame_id: Math.round(frameId),
-          rail_name: item?.rail_name || "",
-          odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
-          severity: normalizePestSeverity(item?.severity),
-          label: item?.label || "병충해",
-          confidence: toConfidenceRatio(item?.confidence),
-          camera: item?.camera || null,
-          bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
-          note: item?.note || null,
-          source: item?.source || payload?.source || null,
-        };
-      })
-      .filter(Boolean),
+    detections: normalized,
+    detectionsByFrame: buildDetectionFrameIndex(normalized),
   };
 }
 
@@ -1056,36 +1075,38 @@ function formatGrowthDetectionLabel(value) {
 
 function normalizeGrowthDetections(payload, sessionName = "-") {
   const detections = Array.isArray(payload?.detections) ? payload.detections : [];
+  const normalized = detections
+    .map((item, index) => {
+      const frameId = Number(item?.frame_id);
+      if (!Number.isFinite(frameId)) return null;
+      const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
+        ? item.bbox.slice(0, 4).map((coord) => Number(coord))
+        : null;
+      const label = item?.label || "raw";
+      const stage = getGrowthDetectionStageInfo(label);
+      return {
+        id: item?.id || `growth_${Math.round(frameId)}_${index + 1}`,
+        frame_id: Math.round(frameId),
+        rail_name: item?.rail_name || "",
+        odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
+        label,
+        stage: stage.id,
+        severity: stage.severity,
+        class_id: Number.isFinite(Number(item?.class_id)) ? Number(item.class_id) : null,
+        confidence: toConfidenceRatio(item?.confidence),
+        camera: item?.camera || null,
+        bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
+        source: item?.source || payload?.source || null,
+      };
+    })
+    .filter(Boolean);
   return {
     available: Boolean(payload?.available),
     session: payload?.session || sessionName,
     source: payload?.source || null,
     model: payload?.model || null,
-    detections: detections
-      .map((item, index) => {
-        const frameId = Number(item?.frame_id);
-        if (!Number.isFinite(frameId)) return null;
-        const bbox = Array.isArray(item?.bbox) && item.bbox.length >= 4
-          ? item.bbox.slice(0, 4).map((coord) => Number(coord))
-          : null;
-        const label = item?.label || "raw";
-        const stage = getGrowthDetectionStageInfo(label);
-        return {
-          id: item?.id || `growth_${Math.round(frameId)}_${index + 1}`,
-          frame_id: Math.round(frameId),
-          rail_name: item?.rail_name || "",
-          odom_x: Number.isFinite(Number(item?.odom_x)) ? Number(item.odom_x) : null,
-          label,
-          stage: stage.id,
-          severity: stage.severity,
-          class_id: Number.isFinite(Number(item?.class_id)) ? Number(item.class_id) : null,
-          confidence: toConfidenceRatio(item?.confidence),
-          camera: item?.camera || null,
-          bbox: bbox && bbox.every((coord) => Number.isFinite(coord)) ? bbox : null,
-          source: item?.source || payload?.source || null,
-        };
-      })
-      .filter(Boolean),
+    detections: normalized,
+    detectionsByFrame: buildDetectionFrameIndex(normalized),
   };
 }
 
@@ -1742,6 +1763,7 @@ class TileMap {
     this.railTrackWorldBounds = this.computeRailTrackWorldBounds();
     this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
     this.growthDetections = normalizeGrowthDetections(growthDetections, manifest.session_name);
+    this.detectionOverlayRevision = 1;
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
@@ -1797,6 +1819,7 @@ class TileMap {
   setGrowthDetections(payload) {
     this.growthDetections = normalizeGrowthDetections(payload, this.manifest.session_name);
     currentGrowthDetections = this.growthDetections;
+    this.detectionOverlayRevision += 1;
     this.queueRender();
   }
 
@@ -2485,6 +2508,19 @@ class TileMap {
     });
   }
 
+  prepareCanvas(canvas, width, height) {
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.floor(width * dpr));
+    const pixelHeight = Math.max(1, Math.floor(height * dpr));
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    const cssWidth = `${width}px`;
+    const cssHeight = `${height}px`;
+    if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+    if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
+    return dpr;
+  }
+
   worldToScreen(x, y) {
     return {
       x: (x - this.centerX) * this.scaleX + this.viewportWidth / 2,
@@ -2705,8 +2741,7 @@ class TileMap {
     if (!isPestRiskPhotoOverlayEnabled()) return [];
     const camera = frame.cameras?.[cameraName];
     if (!camera) return [];
-    const realDetections = (this.pestDetections.detections || [])
-      .filter((detection) => Number(detection.frame_id) === Number(frame.id))
+    const realDetections = getFrameDetections(this.pestDetections, frame.id)
       .filter((detection) => !detection.camera || detection.camera === cameraName);
 
     if (realDetections.length) {
@@ -2749,8 +2784,7 @@ class TileMap {
     if (!isGrowthStatusPhotoOverlayEnabled()) return [];
     const camera = frame.cameras?.[cameraName];
     if (!camera?.width || !camera?.height) return [];
-    return (this.growthDetections.detections || [])
-      .filter((detection) => Number(detection.frame_id) === Number(frame.id))
+    return getFrameDetections(this.growthDetections, frame.id)
       .filter((detection) => !detection.camera || detection.camera === cameraName)
       .map((detection) => {
         const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
@@ -2824,9 +2858,22 @@ class TileMap {
 
   updateDetailFrameDetectionOverlays(detail, frame) {
     for (const cell of detail.querySelectorAll(".detail-cell-wrap")) {
-      cell.querySelector(".pest-box-layer")?.remove();
       const cameraName = cell.dataset.cameraName;
-      if (!this.isCameraCellOverlayVisible(frame, cameraName)) continue;
+      const isVisible = this.isCameraCellOverlayVisible(frame, cameraName);
+      const overlayKey = [
+        frame.id,
+        cameraName || "",
+        isVisible ? "visible" : "hidden",
+        isPestRiskPhotoOverlayEnabled() ? "pest" : "no-pest",
+        isGrowthStatusPhotoOverlayEnabled() ? activeGrowthDetectionModelId : "no-growth",
+        currentLanguage,
+        this.detectionOverlayRevision,
+      ].join("|");
+      if (cell.dataset.detectionOverlayKey === overlayKey) continue;
+
+      cell.dataset.detectionOverlayKey = overlayKey;
+      cell.querySelector(".pest-box-layer")?.remove();
+      if (!isVisible) continue;
       const boxes = this.getDetectionBoxesForCamera(frame, cameraName);
       if (!boxes.length) continue;
       const layer = document.createElement("div");
@@ -3084,9 +3131,7 @@ class TileMap {
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.floor(width * dpr));
-    canvas.height = Math.max(1, Math.floor(height * dpr));
+    const dpr = this.prepareCanvas(canvas, width, height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
@@ -3564,13 +3609,9 @@ class TileMap {
   }
 
   drawOverlay() {
-    const dpr = window.devicePixelRatio || 1;
     const width = this.viewportWidth;
     const height = this.viewportHeight;
-    this.overlayCanvas.width = Math.max(1, Math.floor(width * dpr));
-    this.overlayCanvas.height = Math.max(1, Math.floor(height * dpr));
-    this.overlayCanvas.style.width = `${width}px`;
-    this.overlayCanvas.style.height = `${height}px`;
+    const dpr = this.prepareCanvas(this.overlayCanvas, width, height);
     const ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);

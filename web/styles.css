@@ -4285,6 +4285,9 @@ body.modal-open { overflow: hidden; }
 }
 
 .map-minimap-layer .map-layer-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   gap: 10px;
   padding: 0;
   border: none;
@@ -4304,8 +4307,9 @@ body.modal-open { overflow: hidden; }
 
 .growth-model-options {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
   gap: 6px;
+  min-width: 0;
   width: 100%;
 }
 
