@@ -872,9 +872,9 @@ const LAYER_LEGEND_STEPS = [
 const INITIAL_MAP_VIEW = {
   railName: "rail_001",
   odomX: 1,
-  zoom: 6.8,
-  centerX: 702,
-  centerY: 245,
+  zoom: 7.24,
+  centerX: 759,
+  centerY: 475,
 };
 const MAP_LAYER_CONTROL_ORDER = ["disease_pest_risk", "growth_status"];
 
@@ -5420,7 +5420,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   // Reset layer state for new session
   activeLayerId = null;
   showLayerOverlay = false;
-  activeMiniMapLayerIds = new Set(["disease_pest_risk"]);
+  activeMiniMapLayerIds = new Set(["disease_pest_risk", "growth_status"]);
   selectedSegmentId = null;
   hoveredSegmentId = null;
   selectedPestDetectionId = null;
