@@ -102,6 +102,23 @@ def render_contact_sheet_gpu(
     device: torch.device = DEVICE,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    available_cameras = [camera_name for camera_name in CAMERA_ORDER if frame["cameras"].get(camera_name)]
+    if len(available_cameras) == 1:
+        info = frame["cameras"][available_cameras[0]]
+        bg = torch.tensor([0.918, 0.902, 0.855], device=device).view(3, 1, 1)
+        sheet = bg.expand(3, cell_height, cell_width).clone()
+        try:
+            t = load_image_tensor(info["path"], device)
+            t = t.unsqueeze(0)
+            t = F.interpolate(t, size=(cell_height, cell_width), mode="bilinear", align_corners=False, antialias=True)
+            sheet[:, :, :] = t.squeeze(0)
+        except Exception:
+            pass
+
+        arr = (sheet.permute(1, 2, 0).mul(255).clamp(0, 255).byte().cpu().numpy())
+        Image.fromarray(arr).save(destination, format="JPEG", quality=84)
+        return
+
     sub_w = cell_width // 2
     sub_h = cell_height // 2
     bg = torch.tensor([0.918, 0.902, 0.855], device=device).view(3, 1, 1)

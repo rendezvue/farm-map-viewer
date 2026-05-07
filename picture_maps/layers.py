@@ -187,6 +187,7 @@ def _build_layer_items(
 ) -> list[dict[str, Any]]:
     seg_size = max(2.0, step_m * 8)
     items: list[dict[str, Any]] = []
+    expected_camera_count = max((len(f.get("cameras", {})) for f in frames), default=4)
 
     frames_by_rail: dict[str, list[dict[str, Any]]] = {}
     for f in frames:
@@ -237,7 +238,7 @@ def _build_layer_items(
             missing_cam_ratio = 0.0
             if seg_frames:
                 missing_cam_ratio = sum(
-                    1 for f in seg_frames if len(f.get("cameras", {})) < 4
+                    1 for f in seg_frames if len(f.get("cameras", {})) < expected_camera_count
                 ) / len(seg_frames)
 
             if layer_id == "action_priority":

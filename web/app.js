@@ -32,11 +32,9 @@ function formatCameraPoint(x, y) {
   return `X ${Math.round(x)} / Y ${Math.round(y)}`;
 }
 
-const COUNT_FORMATTER = new Intl.NumberFormat("ko-KR");
-
 function formatCount(value) {
   if (value == null || Number.isNaN(value)) return "-";
-  return COUNT_FORMATTER.format(Math.round(value));
+  return new Intl.NumberFormat(currentLanguage === "kr" ? "ko-KR" : "en-US").format(Math.round(value));
 }
 
 function hexToRgba(hex, alpha) {
@@ -61,6 +59,301 @@ function createElement(tag, className, text) {
   if (className) el.className = className;
   if (text != null) el.textContent = text;
   return el;
+}
+
+const LANGUAGE_STORAGE_KEY = "farmMapViewerLanguage";
+const DEFAULT_LANGUAGE = "en";
+const SUPPORTED_LANGUAGES = new Set(["en", "kr"]);
+const UI_TEXT = {
+  en: {
+    "document.title": "FARMILY crop map",
+    "language.toggleAria": "Switch language",
+    "topbar.issueDetails": "Issue details",
+    "topbar.breadcrumb": "Greenhouses / Greenhouse 1 / Issue overview / Issue details",
+    "topbar.userAria": "User",
+    "nav.crop": "Crop",
+    "nav.analysis": "Analysis",
+    "nav.report": "Report",
+    "nav.settings": "Settings",
+    "common.aiAnalysis": "AI analysis",
+    "common.countSuffix": "",
+    "common.deltaRate": "Change",
+    "sidebar.aiDetections": "AI detections",
+    "sidebar.patrolRecords": "Patrol records",
+    "sidebar.bookmarks": "Marked sections",
+    "status.loading": "Loading...",
+    "status.initFailed": "Initialization failed: {message}",
+    "status.noSessions": "No available sessions.",
+    "status.sessionLoading": "{deviceName}/{sessionName} loading...",
+    "status.loadFailed": "Load failed: {message}",
+    "session.selectorAria": "Session selection",
+    "session.host": "Host",
+    "session.captureDate": "Capture date",
+    "session.noCaptureDates": "No capture dates",
+    "session.rail": "rail",
+    "session.frame": "frame",
+    "report.create": "Create report",
+    "selection.empty": "No selected location",
+    "map.layerSelectorAria": "Map layer selection",
+    "map.tacticalMap": "TACTICAL MAP",
+    "map.detections": "Detections",
+    "map.controlsAria": "Map controls",
+    "map.zoomIn": "Zoom in",
+    "map.zoomOut": "Zoom out",
+    "map.fit": "Fit map",
+    "map.verticalScrollAria": "Vertical map pan",
+    "map.horizontalScrollAria": "Horizontal map pan",
+    "map.panUp": "Pan up",
+    "map.panDown": "Pan down",
+    "map.panLeft": "Pan left",
+    "map.panRight": "Pan right",
+    "mapLayer.disease_pest_risk": "Pest Risk",
+    "mapLayer.growth_status": "Growth Status",
+    "case.confidence": "Confidence",
+    "case.improving": "Improving",
+    "case.firstIssue": "First issue reported",
+    "case.lastIssue": "Last issue reported",
+    "case.location": "Location",
+    "case.locationValue": "Greenhouse 1, Area 1, Row 8, 56",
+    "comments.title": "Comments",
+    "comments.placeholder": "Add a comment.",
+    "comments.submit": "Submit",
+    "comments.sampleMike": "The severity of the pest seems to improve.",
+    "comments.sampleFrancis": "This issue has been confirmed by me but it's not treated yet.",
+    "comments.you": "You",
+    "comments.justNow": "Just now",
+    "hud.zoom": "Zoom",
+    "hud.cameraXY": "Camera XY",
+    "hud.scale": "Scale",
+    "crop.flower": "Flower",
+    "crop.unripe": "Unripe",
+    "crop.midripe": "Mid-ripe",
+    "crop.ripe": "Ripe",
+    "crop.pest": "Pest",
+    "crop.maturity": "Maturity",
+    "crop.totalDetections": "Total detections",
+    "crop.pestSignals": "Pest signals",
+    "crop.sessionDetections": "Session detections ({session})",
+    "crop.last30Title": "Last 30 days · total {count}",
+    "crop.shareAria": "Crop detection share",
+    "crop.valueTitle": "{label} {count} · change {delta}",
+    "crop.value": "{count}",
+    "crop.delta": "Change {delta}",
+    "crop.noRecentData": "No data for the last 30 days.",
+    "crop.legendDelta": "{label} change {delta}",
+    "crop.legendTotalDelta": "Total crop change {delta}",
+    "crop.trendAria": "Crop stage and pest detection trend for the last 30 days",
+    "camera.front_left": "Front Left",
+    "camera.front_right": "Front Right",
+    "camera.rear": "Rear",
+    "camera.side": "Side",
+  },
+  kr: {
+    "document.title": "FARMILY 작물 맵",
+    "language.toggleAria": "언어 전환",
+    "topbar.issueDetails": "이슈 상세",
+    "topbar.breadcrumb": "온실 / 1번 온실 / 이슈 현황 / 이슈 상세",
+    "topbar.userAria": "사용자",
+    "nav.crop": "작물",
+    "nav.analysis": "분석",
+    "nav.report": "리포트",
+    "nav.settings": "설정",
+    "common.aiAnalysis": "AI 분석",
+    "common.countSuffix": "개",
+    "common.deltaRate": "증감률",
+    "sidebar.aiDetections": "AI 검출 현황",
+    "sidebar.patrolRecords": "순찰 기록",
+    "sidebar.bookmarks": "표시한 구간",
+    "status.loading": "로딩 중...",
+    "status.initFailed": "초기화 실패: {message}",
+    "status.noSessions": "사용 가능한 세션이 없습니다.",
+    "status.sessionLoading": "{deviceName}/{sessionName} 로딩 중...",
+    "status.loadFailed": "로드 실패: {message}",
+    "session.selectorAria": "세션 선택",
+    "session.host": "호스트",
+    "session.captureDate": "촬영날짜",
+    "session.noCaptureDates": "촬영날짜 없음",
+    "session.rail": "레일",
+    "session.frame": "프레임",
+    "report.create": "리포트 생성",
+    "selection.empty": "선택한 위치가 없습니다",
+    "map.layerSelectorAria": "지도 레이어 선택",
+    "map.tacticalMap": "전술 미니맵",
+    "map.detections": "검출 결과",
+    "map.controlsAria": "지도 컨트롤",
+    "map.zoomIn": "확대",
+    "map.zoomOut": "축소",
+    "map.fit": "전체 보기",
+    "map.verticalScrollAria": "지도 세로 이동",
+    "map.horizontalScrollAria": "지도 좌우 이동",
+    "map.panUp": "위로 이동",
+    "map.panDown": "아래로 이동",
+    "map.panLeft": "왼쪽 이동",
+    "map.panRight": "오른쪽 이동",
+    "mapLayer.disease_pest_risk": "병충해 위험",
+    "mapLayer.growth_status": "생육 상태",
+    "case.confidence": "신뢰도",
+    "case.improving": "개선 중",
+    "case.firstIssue": "최초 이슈 보고",
+    "case.lastIssue": "최근 이슈 보고",
+    "case.location": "위치",
+    "case.locationValue": "1번 온실, A구역, 8열, 56",
+    "comments.title": "댓글",
+    "comments.placeholder": "댓글을 입력하세요.",
+    "comments.submit": "등록",
+    "comments.sampleMike": "병충해 심각도가 점차 개선되는 것 같습니다.",
+    "comments.sampleFrancis": "제가 확인한 이슈지만 아직 처리되지는 않았습니다.",
+    "comments.you": "나",
+    "comments.justNow": "방금",
+    "hud.zoom": "배율",
+    "hud.cameraXY": "카메라 XY",
+    "hud.scale": "스케일",
+    "crop.flower": "꽃",
+    "crop.unripe": "안익음",
+    "crop.midripe": "덜익음",
+    "crop.ripe": "익음",
+    "crop.pest": "병충해",
+    "crop.maturity": "성숙도",
+    "crop.totalDetections": "전체 검출량",
+    "crop.pestSignals": "병충해 신호",
+    "crop.sessionDetections": "세션 검출량 ({session})",
+    "crop.last30Title": "최근 30일 통합 추이 · 총 {count}개",
+    "crop.shareAria": "작물 검출 비율",
+    "crop.valueTitle": "{label} {count}개 · 증감률 {delta}",
+    "crop.value": "{count}개",
+    "crop.delta": "증감률 {delta}",
+    "crop.noRecentData": "최근 30일 데이터가 없습니다.",
+    "crop.legendDelta": "{label} 증감률 {delta}",
+    "crop.legendTotalDelta": "전체 작물 증감률 {delta}",
+    "crop.trendAria": "최근 30일간 작물 생육 단계 및 병충해 검출 추이",
+    "camera.front_left": "전방 좌측",
+    "camera.front_right": "전방 우측",
+    "camera.rear": "후방",
+    "camera.side": "측면",
+  },
+};
+
+let currentLanguage = (() => {
+  try {
+    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return SUPPORTED_LANGUAGES.has(saved) ? saved : DEFAULT_LANGUAGE;
+  } catch (_) {
+    return DEFAULT_LANGUAGE;
+  }
+})();
+
+function t(key, values = {}) {
+  const fallback = UI_TEXT.en[key] || key;
+  const template = UI_TEXT[currentLanguage]?.[key] || fallback;
+  return template.replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "");
+}
+
+function applyLanguage({ rerender = true } = {}) {
+  document.documentElement.lang = currentLanguage === "kr" ? "ko" : "en";
+  document.title = t("document.title");
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    el.setAttribute("placeholder", t(el.dataset.i18nPlaceholder));
+  }
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAria));
+  }
+  const toggle = document.getElementById("languageToggle");
+  if (toggle) {
+    toggle.dataset.language = currentLanguage;
+    toggle.setAttribute("aria-label", t("language.toggleAria"));
+    for (const code of toggle.querySelectorAll("[data-lang-code]")) {
+      code.classList.toggle("is-active", code.dataset.langCode === currentLanguage);
+    }
+  }
+  for (const label of document.querySelectorAll(".frame-camera-label[data-camera-name]")) {
+    label.textContent = getCameraLabel(label.dataset.cameraName) || label.dataset.cameraName;
+  }
+  for (const chip of document.querySelectorAll(".session-chip[data-rail-count][data-frame-count]")) {
+    const meta = chip.querySelector(".session-chip-meta");
+    if (!meta) continue;
+    const frameCount = Number(chip.dataset.frameCount) || 0;
+    meta.textContent = `${t("session.rail")} ${chip.dataset.railCount} · ${t("session.frame")} ${frameCount.toLocaleString(currentLanguage === "kr" ? "ko-KR" : "en-US")}`;
+  }
+  for (const select of document.querySelectorAll("[data-session-date-select]")) {
+    if (select.disabled && select.options.length === 1 && !select.options[0].value) {
+      select.options[0].textContent = t("session.noCaptureDates");
+    }
+  }
+  updateDatasetSummaryLanguage();
+  if (!rerender) return;
+  renderCropPanel(currentCropSummary);
+  if (currentLayersData) renderMapLayerControls(currentLayersData);
+  currentMap?.queueRender();
+}
+
+function setLanguage(lang) {
+  if (!SUPPORTED_LANGUAGES.has(lang) || lang === currentLanguage) return;
+  currentLanguage = lang;
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+  } catch (_) {}
+  applyLanguage();
+}
+
+function initLanguageToggle() {
+  const toggle = document.getElementById("languageToggle");
+  if (!toggle) return;
+  toggle.addEventListener("click", () => {
+    setLanguage(currentLanguage === "en" ? "kr" : "en");
+  });
+  applyLanguage({ rerender: false });
+}
+
+function getCameraLabel(cameraName) {
+  return UI_TEXT[currentLanguage]?.[`camera.${cameraName}`] || UI_TEXT.en[`camera.${cameraName}`] || CAMERA_LABELS[cameraName] || cameraName;
+}
+
+function updateDatasetSummaryLanguage() {
+  const summary = document.getElementById("datasetSummary");
+  if (!summary) return;
+  if (summary.dataset.summaryState === "loaded") {
+    const frameCount = Number(summary.dataset.frameCount) || 0;
+    summary.textContent = `${summary.dataset.deviceName || "-"} · ${summary.dataset.sessionName || "-"} · ${t("session.rail")} ${summary.dataset.railCount || "-"} · ${t("session.frame")} ${frameCount.toLocaleString(currentLanguage === "kr" ? "ko-KR" : "en-US")}`;
+  } else if (summary.dataset.summaryState === "loading") {
+    summary.textContent = t("status.sessionLoading", {
+      deviceName: summary.dataset.deviceName || "-",
+      sessionName: summary.dataset.sessionName || "-",
+    });
+  } else if (summary.dataset.summaryState === "empty") {
+    summary.textContent = t("status.noSessions");
+  } else if (["Loading...", "로딩 중..."].includes(summary.textContent.trim())) {
+    summary.textContent = t("status.loading");
+  }
+}
+
+function formatCaptureDateLabel(sessionName) {
+  const match = /^(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})?$/.exec(sessionName || "");
+  if (!match) return sessionName || "-";
+  const [, year, month, day, hour, minute, second = "00"] = match;
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+function getLatestSession(sessions = []) {
+  return [...sessions].sort((a, b) => b.name.localeCompare(a.name))[0] || null;
+}
+
+function syncHostSelectors(deviceName) {
+  for (const select of document.querySelectorAll("[data-session-host-select]")) {
+    if (Array.from(select.options).some((option) => option.value === deviceName)) {
+      select.value = deviceName;
+    }
+  }
+}
+
+function syncCaptureDateSelectors(sessionName) {
+  for (const select of document.querySelectorAll("[data-session-date-select]")) {
+    if (Array.from(select.options).some((option) => option.value === sessionName)) {
+      select.value = sessionName;
+    }
+  }
 }
 
 function setActiveRail(railName) {
@@ -218,6 +511,7 @@ function getCropPanelState(summary = currentCropSummary) {
 function buildCropSeriesData(cropState) {
   return CROP_PANEL_SERIES.map((series) => ({
     ...series,
+    label: t(`crop.${series.id}`),
     value: cropState.counts[series.id] ?? 0,
     deltaPct: cropState.deltaPct[series.id] ?? 0,
     points: cropState.points.map((point) => toCropCount(point[series.id])),
@@ -338,7 +632,7 @@ function buildCropTrendSvg(seriesData, xLabels) {
   `).join("");
 
   return `
-    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="최근 30일간 작물 생육 단계 및 병충해 검출 추이">
+    <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${t("crop.trendAria")}">
       <defs>${defs}</defs>
       <rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="8" fill="rgba(23,31,28,0.9)" stroke="rgba(39,48,41,0.8)"/>
       ${guides}
@@ -362,24 +656,24 @@ function renderCropPanel(summary = currentCropSummary) {
   const totalCount = cropState.counts.total;
   const pestCount = cropState.counts.pest;
   const title = document.querySelector("#cropPanel .crop-chart-title");
-  if (title) title.textContent = `최근 30일 통합 추이 · 총 ${formatCount(totalCount)}개`;
-  sessionLabel.textContent = `세션 검출량 (${cropState.session})`;
+  if (title) title.textContent = t("crop.last30Title", { count: formatCount(totalCount) });
+  sessionLabel.textContent = t("crop.sessionDetections", { session: cropState.session });
 
   panel.hidden = false;
   if (overview) {
     const shareTotal = Math.max(1, seriesData.reduce((sum, series) => sum + series.value, 0));
     overview.innerHTML = `
       <div class="crop-total-card">
-        <span class="crop-overview-label">Total detections</span>
+        <span class="crop-overview-label">${t("crop.totalDetections")}</span>
         <strong class="crop-overview-value">${formatCount(totalCount)}</strong>
       </div>
       <div class="crop-risk-card">
-        <span class="crop-overview-label">Pest signals</span>
+        <span class="crop-overview-label">${t("crop.pestSignals")}</span>
         <strong class="crop-overview-value">${formatCount(pestCount)}</strong>
       </div>
-      <div class="crop-share-bar" aria-label="작물 검출 비율">
+      <div class="crop-share-bar" aria-label="${t("crop.shareAria")}">
         ${seriesData.map((series) => `
-          <span class="crop-share-segment" title="${series.label} ${formatCount(series.value)}개" style="width:${Math.max(2, (series.value / shareTotal) * 100).toFixed(2)}%;background:${series.color}"></span>
+          <span class="crop-share-segment" title="${t("crop.value", { count: `${series.label} ${formatCount(series.value)}` })}" style="width:${Math.max(2, (series.value / shareTotal) * 100).toFixed(2)}%;background:${series.color}"></span>
         `).join("")}
       </div>
     `;
@@ -389,7 +683,11 @@ function renderCropPanel(summary = currentCropSummary) {
   for (const series of seriesData) {
     const card = document.createElement("div");
     card.className = "crop-stat-card";
-    card.title = `${series.label} ${formatCount(series.value)}개 · 증감률 ${formatCropDelta(series.deltaPct)}`;
+    card.title = t("crop.valueTitle", {
+      label: series.label,
+      count: formatCount(series.value),
+      delta: formatCropDelta(series.deltaPct),
+    });
     card.style.borderColor = hexToRgba(series.color, 0.22);
     card.style.background = `${hexToRgba(series.color, 0.07)}`;
     card.innerHTML = `
@@ -399,8 +697,8 @@ function renderCropPanel(summary = currentCropSummary) {
           <span class="crop-stat-label">${series.label}</span>
         </div>
         <div class="crop-stat-metrics">
-          <strong class="crop-stat-value">${formatCount(series.value)}개</strong>
-          <span class="crop-stat-delta ${cropDeltaClass(series.deltaPct)}">증감률 ${formatCropDelta(series.deltaPct)}</span>
+          <strong class="crop-stat-value">${t("crop.value", { count: formatCount(series.value) })}</strong>
+          <span class="crop-stat-delta ${cropDeltaClass(series.deltaPct)}">${t("crop.delta", { delta: formatCropDelta(series.deltaPct) })}</span>
         </div>
       </div>
     `;
@@ -411,22 +709,22 @@ function renderCropPanel(summary = currentCropSummary) {
     if (!point?.date) return "";
     const date = new Date(`${point.date}T00:00:00`);
     if (Number.isNaN(date.getTime())) return point.date;
-    return date.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" });
+    return date.toLocaleDateString(currentLanguage === "kr" ? "ko-KR" : "en-US", { month: "numeric", day: "numeric" });
   });
   if (cropState.points.length > 0) {
     chart.innerHTML = buildCropTrendSvg(seriesData, xLabels);
   } else {
-    chart.innerHTML = `<div class="crop-chart-empty">최근 30일 데이터가 없습니다.</div>`;
+    chart.innerHTML = `<div class="crop-chart-empty">${t("crop.noRecentData")}</div>`;
   }
   legend.innerHTML = `${seriesData.map((series) => `
     <span class="crop-legend-item">
       <span class="crop-legend-dot" style="background:${series.color}"></span>
-      ${series.label} 증감률 ${formatCropDelta(series.deltaPct)}
+      ${t("crop.legendDelta", { label: series.label, delta: formatCropDelta(series.deltaPct) })}
     </span>
   `).join("")}
     <span class="crop-legend-item is-total">
       <span class="crop-legend-dot is-total"></span>
-      전체 작물 증감률 ${formatCropDelta(cropState.deltaPct.total)}
+      ${t("crop.legendTotalDelta", { delta: formatCropDelta(cropState.deltaPct.total) })}
     </span>`;
 }
 
@@ -435,15 +733,15 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
   if (!legend) return;
   const cropState = getCropPanelState();
   const maturityScore = computeCropMaturityScore(cropState);
-  const mapResourceLabels = ["Flower", "Unripe", "Mid-ripe", "Ripe", "Pest"];
+  const mapResourceLabelKeys = ["flower", "unripe", "midripe", "ripe", "pest"];
   const resources = [
     ...seriesData.map((series, index) => ({
-      label: mapResourceLabels[index] || series.label,
+      label: t(`crop.${mapResourceLabelKeys[index]}`) || series.label,
       value: formatCount(series.value),
       icon: ["flower", "unripe", "midripe", "ripe", "pest"][index] || "crop",
       color: series.color,
     })),
-    { label: "Maturity", value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#45d46a" },
+    { label: t("crop.maturity"), value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#45d46a" },
   ];
   legend.innerHTML = resources.map((item) => `
     <div class="map-resource-item" title="${item.label}" aria-label="${item.label} ${item.value}" style="--resource-color:${item.color}">
@@ -475,9 +773,9 @@ function initCasePanel() {
     const item = createElement("div", "case-comment");
     const author = createElement("div", "case-comment-author");
     const avatar = createElement("span", "case-avatar case-avatar-user", "YU");
-    const name = createElement("strong", "", "You");
+    const name = createElement("strong", "", t("comments.you"));
     const body = createElement("p", "", text);
-    const stamp = createElement("time", "", "Just now");
+    const stamp = createElement("time", "", t("comments.justNow"));
     author.append(avatar, name);
     item.append(author, body, stamp);
     list.prepend(item);
@@ -576,10 +874,6 @@ const INITIAL_MAP_VIEW = {
   centerY: 245,
 };
 const MAP_LAYER_CONTROL_ORDER = ["disease_pest_risk", "growth_status"];
-const MAP_LAYER_CONTROL_LABELS = {
-  disease_pest_risk: "Pest Risk",
-  growth_status: "Growth Status",
-};
 
 function getActiveLayer() {
   if (!currentLayers || !activeLayerId) return null;
@@ -1185,7 +1479,7 @@ function formatPestMarkerTitle(detection) {
     bits.push(`${detection.rail_name} ${detection.odom_x.toFixed(1)}m`);
   }
   if (detection.camera && CAMERA_LABELS[detection.camera]) {
-    bits.push(CAMERA_LABELS[detection.camera]);
+    bits.push(getCameraLabel(detection.camera));
   }
   if (detection.confidence != null) {
     bits.push(`신뢰도 ${Math.round(detection.confidence * 100)}%`);
@@ -1195,16 +1489,30 @@ function formatPestMarkerTitle(detection) {
 
 // ─── TileMap ─────────────────────────────────────────────────────────────────
 
+function getFrameCameraNames(frame) {
+  return CAMERA_ORDER.filter((cameraName) => frame.cameras?.[cameraName]);
+}
+
+function isSingleCameraFrame(frame) {
+  return getFrameCameraNames(frame).length === 1;
+}
+
+function isSingleCameraSession(frames) {
+  return frames.length > 0 && frames.every((frame) => isSingleCameraFrame(frame));
+}
+
 function computeDetailSheetSize(frame) {
   let maxWidth = 0;
   let maxHeight = 0;
-  for (const cameraName of CAMERA_ORDER) {
+  const cameraNames = getFrameCameraNames(frame);
+  for (const cameraName of cameraNames) {
     const camera = frame.cameras[cameraName];
     if (!camera) continue;
     maxWidth = Math.max(maxWidth, camera.width || 0);
     maxHeight = Math.max(maxHeight, camera.height || 0);
   }
   if (!maxWidth || !maxHeight) return null;
+  if (cameraNames.length === 1) return { width: maxWidth, height: maxHeight };
   return { width: maxWidth * 2, height: maxHeight * 2 };
 }
 
@@ -1219,7 +1527,11 @@ function computeViewerMaxZoom(manifest, frames) {
       size.height / frame.rect_px.height,
     );
   }
-  return manifest.max_zoom + Math.log2(detailScale);
+  const sourceResolutionZoom = manifest.max_zoom + Math.log2(Math.max(1, detailScale));
+  if (isSingleCameraSession(frames)) {
+    return Math.max(manifest.max_zoom + 1.5, sourceResolutionZoom);
+  }
+  return sourceResolutionZoom;
 }
 
 class TileMap {
@@ -1269,6 +1581,7 @@ class TileMap {
     this.scrollRightButton = scrollRightButton;
     this.manifest = manifest;
     this.frames = frames;
+    this.singleCameraSession = isSingleCameraSession(frames);
     this.framesById = new Map(frames.map((frame) => [String(frame.id), frame]));
     this.railTrackWorldBounds = this.computeRailTrackWorldBounds();
     this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
@@ -1283,8 +1596,10 @@ class TileMap {
     this.selectedFrameId = null;
     this.minZoom = manifest.min_zoom;
     this.maxZoom = Math.max(maxZoom || manifest.max_zoom, manifest.max_zoom);
-    this.detailFadeStartZoom = Math.min(this.maxZoom, manifest.max_zoom + 0.35);
-    this.detailFadeSpan = 0.6;
+    this.detailFadeStartZoom = this.singleCameraSession
+      ? Math.max(this.minZoom, manifest.max_zoom - 0.45)
+      : Math.min(this.maxZoom, manifest.max_zoom + 0.35);
+    this.detailFadeSpan = this.singleCameraSession ? 0.25 : 0.6;
     this.currentZoom = clamp(manifest.max_zoom - 3, this.minZoom, this.maxZoom);
     this.tileZoom = this.minZoom;
     this.zoomDims = null;
@@ -2176,13 +2491,16 @@ class TileMap {
     };
   }
 
-  createDetailFrame(frame) {
+  createDetailFrame(frame, { fetchPriority = "auto" } = {}) {
     const wrapper = document.createElement("div");
     wrapper.className = "detail-frame";
     wrapper.dataset.frameId = String(frame.id);
     const grid = document.createElement("div");
     grid.className = "detail-grid";
-    for (const cameraName of CAMERA_ORDER) {
+    const cameraNames = getFrameCameraNames(frame);
+    const visibleCameraNames = cameraNames.length === 1 ? cameraNames : CAMERA_ORDER;
+    grid.classList.toggle("is-single-camera", cameraNames.length === 1);
+    for (const cameraName of visibleCameraNames) {
       const cell = document.createElement("div");
       cell.className = "detail-cell-wrap";
       cell.dataset.cameraName = cameraName;
@@ -2193,7 +2511,8 @@ class TileMap {
         image.alt = `${frame.label} ${cameraName}`;
         image.draggable = false;
         image.decoding = "async";
-        image.loading = "lazy";
+        image.loading = fetchPriority === "high" ? "eager" : "lazy";
+        image.fetchPriority = fetchPriority;
         image.src = camera.url;
         cell.appendChild(image);
       } else {
@@ -2206,6 +2525,13 @@ class TileMap {
     wrapper.appendChild(grid);
     this.detailPane.appendChild(wrapper);
     return wrapper;
+  }
+
+  updateDetailFrameLoadPriority(detail, fetchPriority) {
+    for (const image of detail.querySelectorAll("img.detail-cell")) {
+      image.loading = fetchPriority === "high" ? "eager" : "lazy";
+      image.fetchPriority = fetchPriority;
+    }
   }
 
   getDetectionBoxesForCamera(frame, cameraName) {
@@ -2251,6 +2577,15 @@ class TileMap {
 
   isCameraCellOverlayVisible(frame, cameraName) {
     const rect = frame.rect_px;
+    if (isSingleCameraFrame(frame)) {
+      const topLeft = this.worldToScreen(rect.left, rect.top);
+      const bottomRight = this.worldToScreen(rect.right, rect.bottom);
+      const visibleLeft = clamp(topLeft.x, 0, this.viewportWidth);
+      const visibleTop = clamp(topLeft.y, 0, this.viewportHeight);
+      const visibleRight = clamp(bottomRight.x, 0, this.viewportWidth);
+      const visibleBottom = clamp(bottomRight.y, 0, this.viewportHeight);
+      return visibleRight - visibleLeft > 1 && visibleBottom - visibleTop > 1;
+    }
     const quadrantOffsets = {
       front_left: { x: 0.0, y: 0.0 },
       front_right: { x: 0.5, y: 0.0 },
@@ -2314,10 +2649,12 @@ class TileMap {
     railLabel.className = "frame-annotation-label";
     railLabel.textContent = frame.rail_name;
     wrapper.appendChild(railLabel);
-    for (const cameraName of CAMERA_ORDER) {
+    const cameraNames = isSingleCameraFrame(frame) ? getFrameCameraNames(frame) : CAMERA_ORDER;
+    for (const cameraName of cameraNames) {
       const label = document.createElement("div");
       label.className = `frame-camera-label ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
-      label.textContent = CAMERA_LABELS[cameraName] || cameraName;
+      label.dataset.cameraName = cameraName;
+      label.textContent = getCameraLabel(cameraName) || cameraName;
       wrapper.appendChild(label);
     }
     this.annotationPane.appendChild(wrapper);
@@ -2396,6 +2733,19 @@ class TileMap {
     let anchorX = rect.center_x;
     let anchorY = rect.top + rect.height * 0.22;
     const cameraName = detection.camera;
+    if (isSingleCameraFrame(frame)) {
+      const camera = frame.cameras?.[cameraName] || frame.cameras?.[getFrameCameraNames(frame)[0]];
+      const bbox = Array.isArray(detection.bbox) ? detection.bbox : null;
+      if (bbox && camera?.width && camera?.height) {
+        const bboxCenterX = clamp((bbox[0] + bbox[2]) * 0.5 / camera.width, 0, 1);
+        const bboxCenterY = clamp((bbox[1] + bbox[3]) * 0.5 / camera.height, 0, 1);
+        return {
+          x: rect.left + rect.width * bboxCenterX,
+          y: rect.top + rect.height * bboxCenterY,
+        };
+      }
+      return { x: anchorX, y: anchorY };
+    }
     if (!cameraName || !CAMERA_ORDER.includes(cameraName)) {
       return { x: anchorX, y: anchorY };
     }
@@ -2623,15 +2973,29 @@ class TileMap {
     }
     const padding = 96 / this.baseScale;
     const wanted = new Set();
+    const candidates = [];
     for (const frame of this.frames) {
       const rect = frame.rect_px;
       if (rect.right < bounds.left - padding || rect.left > bounds.right + padding) continue;
       if (rect.bottom < bounds.top - padding || rect.top > bounds.bottom + padding) continue;
+      const dx = (rect.center_x - this.centerX) * this.scaleX;
+      const dy = (rect.center_y - this.centerY) * this.scaleY;
+      const distance = Number(frame.id) === Number(this.selectedFrameId) ? -1 : dx * dx + dy * dy;
+      candidates.push({ frame, distance });
+    }
+    candidates.sort((a, b) => a.distance - b.distance);
+
+    for (const [index, item] of candidates.entries()) {
+      const frame = item.frame;
+      const rect = frame.rect_px;
       wanted.add(frame.id);
       let detail = this.visibleDetails.get(frame.id);
+      const fetchPriority = index < 6 ? "high" : "auto";
       if (!detail) {
-        detail = this.createDetailFrame(frame);
+        detail = this.createDetailFrame(frame, { fetchPriority });
         this.visibleDetails.set(frame.id, detail);
+      } else {
+        this.updateDetailFrameLoadPriority(detail, fetchPriority);
       }
       this.updateDetailFrameDetectionOverlays(detail, frame);
       const topLeft = this.worldToScreen(rect.left, rect.top);
@@ -3695,7 +4059,7 @@ function renderSelection(frame, insights) {
     const camera = frame.cameras[cameraName];
     if (!camera) continue;
     const card = createElement("article", "camera-card");
-    const title = createElement("h3", "", CAMERA_LABELS[cameraName] || cameraName);
+    const title = createElement("h3", "", getCameraLabel(cameraName));
     const image = document.createElement("img");
     image.loading = "lazy";
     image.src = camera.url;
@@ -4025,7 +4389,7 @@ function renderMapLayerControls(layers) {
     indicator.className = "map-layer-swatch";
     indicator.dataset.scheme = layer.color_scheme;
 
-    const text = createElement("span", "map-layer-name", MAP_LAYER_CONTROL_LABELS[layer.id] || layer.label);
+    const text = createElement("span", "map-layer-name", t(`mapLayer.${layer.id}`) || layer.label);
 
     label.append(checkbox, indicator, text);
     label.addEventListener("click", (event) => event.stopPropagation());
@@ -4793,11 +5157,16 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   if (loadToken !== currentSessionLoadToken) return null;
   currentPestDetections = normalizePestDetections(pestDetections, sessionName);
 
-  document.getElementById("datasetSummary").textContent =
-    `${deviceName} · ${sessionName} · rail ${manifest.summary.rail_count}개 · frame ${manifest.summary.frame_count.toLocaleString()}개`;
+  const datasetSummary = document.getElementById("datasetSummary");
+  datasetSummary.dataset.summaryState = "loaded";
+  datasetSummary.dataset.deviceName = deviceName;
+  datasetSummary.dataset.sessionName = sessionName;
+  datasetSummary.dataset.railCount = String(manifest.summary.rail_count);
+  datasetSummary.dataset.frameCount = String(manifest.summary.frame_count);
+  updateDatasetSummaryLanguage();
   const mapSessionChip = document.getElementById("mapSessionChip");
   if (mapSessionChip) {
-    mapSessionChip.textContent = `생육 분석 · ${sessionName}`;
+    mapSessionChip.textContent = `${t("common.aiAnalysis")} · ${sessionName}`;
   }
   renderCropPanel(currentCropSummary);
 
@@ -4876,32 +5245,76 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
 
 function renderDeviceTabs(devicesData, onSelect) {
   const tabsEl = document.getElementById("deviceTabs");
-  tabsEl.innerHTML = "";
+  if (tabsEl) tabsEl.innerHTML = "";
 
-  const select = document.createElement("select");
-  select.className = "device-select";
-  for (const device of devicesData) {
-    const opt = document.createElement("option");
-    opt.value = device.name;
-    opt.textContent = device.name;
-    select.appendChild(opt);
+  const selects = [];
+  if (tabsEl) {
+    const legacySelect = document.createElement("select");
+    legacySelect.className = "device-select";
+    legacySelect.dataset.sessionHostSelect = "";
+    tabsEl.appendChild(legacySelect);
+    selects.push(legacySelect);
   }
-  select.addEventListener("change", () => onSelect(select.value));
-  tabsEl.appendChild(select);
+  const visibleSelect = document.getElementById("hostSelect");
+  if (visibleSelect) selects.push(visibleSelect);
+
+  for (const select of selects) {
+    select.innerHTML = "";
+    select.disabled = devicesData.length === 0;
+    for (const device of devicesData) {
+      const opt = document.createElement("option");
+      opt.value = device.name;
+      opt.textContent = device.name;
+      select.appendChild(opt);
+    }
+    select.onchange = () => onSelect(select.value, { autoLoad: true });
+  }
 }
 
 function renderSessionList(sessions, activeDevice, onSelect) {
   const listEl = document.getElementById("sessionList");
-  listEl.innerHTML = "";
 
   // 최신 세션이 상단에 오도록 내림차순 정렬
   const sorted = [...sessions].sort((a, b) => b.name.localeCompare(a.name));
 
+  for (const select of document.querySelectorAll("[data-session-date-select]")) {
+    select.innerHTML = "";
+    select.disabled = sorted.length === 0;
+    if (sorted.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = t("session.noCaptureDates");
+      select.appendChild(opt);
+    } else {
+      for (const session of sorted) {
+        const opt = document.createElement("option");
+        opt.value = session.name;
+        opt.textContent = formatCaptureDateLabel(session.name);
+        opt.title = `${activeDevice}/${session.name}`;
+        select.appendChild(opt);
+      }
+    }
+    select.onchange = () => {
+      if (select.value) onSelect(activeDevice, select.value);
+    };
+  }
+
+  if (!listEl) return;
+  listEl.innerHTML = "";
+
   for (const session of sorted) {
     const btn = createElement("button", "session-chip");
+    btn.type = "button";
     btn.dataset.session = session.name;
-    const name = createElement("strong", "", session.name);
-    const meta = createElement("span", "", `rail ${session.rail_count} · ${session.frame_count.toLocaleString()}`);
+    btn.dataset.railCount = String(session.rail_count);
+    btn.dataset.frameCount = String(session.frame_count);
+    btn.title = `${activeDevice}/${session.name}`;
+    const name = createElement("strong", "", formatCaptureDateLabel(session.name));
+    const meta = createElement(
+      "span",
+      "session-chip-meta",
+      `${t("session.rail")} ${session.rail_count} · ${t("session.frame")} ${session.frame_count.toLocaleString(currentLanguage === "kr" ? "ko-KR" : "en-US")}`,
+    );
     btn.append(name, meta);
     btn.addEventListener("click", () => onSelect(activeDevice, session.name, btn));
     listEl.appendChild(btn);
@@ -4912,6 +5325,7 @@ function renderSessionList(sessions, activeDevice, onSelect) {
 
 async function bootstrap() {
   const summary = document.getElementById("datasetSummary");
+  initLanguageToggle();
   renderCropPanel();
   initCasePanel();
   initInspectorTabs();
@@ -4923,12 +5337,13 @@ async function bootstrap() {
     devicesData = payload.devices;
     allDevicesData = devicesData;
   } catch (err) {
-    summary.textContent = `초기화 실패: ${err instanceof Error ? err.message : String(err)}`;
+    summary.textContent = t("status.initFailed", { message: err instanceof Error ? err.message : String(err) });
     return;
   }
 
   if (!devicesData || devicesData.length === 0) {
-    summary.textContent = "사용 가능한 세션이 없습니다.";
+    summary.dataset.summaryState = "empty";
+    summary.textContent = t("status.noSessions");
     return;
   }
 
@@ -4936,33 +5351,43 @@ async function bootstrap() {
   activeDeviceName = activeDevice;
   let activeSessionBtn = null;
 
-  function selectDevice(deviceName) {
+  function selectDevice(deviceName, { autoLoad = false } = {}) {
     activeDevice = deviceName;
     activeDeviceName = deviceName;
-    // 콤보박스 값 동기화
-    const sel = document.querySelector(".device-select");
-    if (sel && sel.value !== deviceName) sel.value = deviceName;
+    syncHostSelectors(deviceName);
     const device = devicesData.find((d) => d.name === deviceName);
+    if (!device) return;
     renderSessionList(device.sessions, deviceName, selectSession);
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
     activeSessionBtn = null;
+    const latestSession = getLatestSession(device.sessions);
+    if (latestSession) syncCaptureDateSelectors(latestSession.name);
+    if (autoLoad && latestSession) {
+      void selectSession(deviceName, latestSession.name);
+    }
   }
 
-  async function selectSession(deviceName, sessionName, btn) {
+  async function selectSession(deviceName, sessionName, btn = null) {
     const loadToken = ++currentSessionLoadToken;
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
-    activeSessionBtn = btn;
-    btn.classList.add("is-active");
+    activeSessionBtn = btn || Array.from(document.querySelectorAll(".session-chip"))
+      .find((chip) => chip.dataset.session === sessionName) || null;
+    if (activeSessionBtn) activeSessionBtn.classList.add("is-active");
+    syncHostSelectors(deviceName);
+    syncCaptureDateSelectors(sessionName);
     currentCropSummary = buildCropPanelPlaceholder(sessionName);
     currentPestDetections = normalizePestDetections(null, sessionName);
     selectedPestDetectionId = null;
     renderCropPanel(currentCropSummary);
-    summary.textContent = `${deviceName}/${sessionName} 로딩 중...`;
+    summary.dataset.summaryState = "loading";
+    summary.dataset.deviceName = deviceName;
+    summary.dataset.sessionName = sessionName;
+    summary.textContent = t("status.sessionLoading", { deviceName, sessionName });
     try {
       await loadSession(deviceName, sessionName, loadToken);
     } catch (err) {
       if (loadToken !== currentSessionLoadToken) return;
-      summary.textContent = `로드 실패: ${err instanceof Error ? err.message : String(err)}`;
+      summary.textContent = t("status.loadFailed", { message: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -4971,9 +5396,8 @@ async function bootstrap() {
 
   const firstDevice = devicesData[0];
   if (firstDevice.sessions.length > 0 && currentSessionLoadToken === 0) {
-    const firstSession = firstDevice.sessions[firstDevice.sessions.length - 1];
-    const firstBtn = document.querySelector(`.session-chip[data-session="${firstSession.name}"]`);
-    if (firstBtn) await selectSession(firstDevice.name, firstSession.name, firstBtn);
+    const firstSession = getLatestSession(firstDevice.sessions);
+    if (firstSession) await selectSession(firstDevice.name, firstSession.name);
   }
 
   const fitButton = document.getElementById("fitButton");
@@ -5028,6 +5452,6 @@ async function bootstrap() {
 
 bootstrap().catch((error) => {
   document.getElementById("datasetSummary").textContent =
-    `초기화 실패: ${error instanceof Error ? error.message : String(error)}`;
+    t("status.initFailed", { message: error instanceof Error ? error.message : String(error) });
   console.error(error);
 });

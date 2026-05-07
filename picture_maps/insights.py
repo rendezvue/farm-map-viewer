@@ -22,6 +22,16 @@ SESSION_RE = re.compile(r"^(\d{8}_\d{6})$")
 GAP_THRESHOLD_MULT = 2.5
 
 
+def _expected_cameras(frames: list[dict[str, Any]]) -> tuple[str, ...]:
+    seen = {
+        camera_name
+        for frame in frames
+        for camera_name in frame.get("cameras", {})
+    }
+    ordered = tuple(camera_name for camera_name in CAMERA_ORDER if camera_name in seen)
+    return ordered or CAMERA_ORDER
+
+
 def _parse_session_dt(session_name: str) -> datetime | None:
     if not SESSION_RE.match(session_name):
         return None
@@ -72,6 +82,7 @@ def _find_prev_insights(build_root: Path, device_name: str, session_name: str) -
 def _compute_frame_insights(
     frames: list[dict[str, Any]],
     global_step_m: float,
+    expected_cameras: tuple[str, ...],
     alerts: list[dict[str, Any]],
     alert_counter: list[int],  # mutable counter
 ) -> dict[str, Any]:
@@ -87,7 +98,7 @@ def _compute_frame_insights(
     for frame in frames:
         fid = str(frame["id"])
         cameras = frame.get("cameras", {})
-        missing = [c for c in CAMERA_ORDER if c not in cameras]
+        missing = [c for c in expected_cameras if c not in cameras]
         flags: list[str] = []
         frame_alert_ids: list[str] = []
 
@@ -302,7 +313,7 @@ def compute_insights(
     alerts: list[dict[str, Any]] = []
     alert_counter = [0]
 
-    frame_insights = _compute_frame_insights(frames, global_step_m, alerts, alert_counter)
+    frame_insights = _compute_frame_insights(frames, global_step_m, _expected_cameras(frames), alerts, alert_counter)
     rail_insights, priority_rail_count, gap_count = _compute_rail_insights(
         rails_meta, frames, frame_insights
     )
