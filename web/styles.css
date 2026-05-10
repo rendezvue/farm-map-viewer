@@ -2618,19 +2618,20 @@ body.modal-open { overflow: hidden; }
 }
 
 .case-info-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
   flex: 0 0 auto;
 }
 
 .case-confidence-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px;
   color: var(--t2);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .case-confidence-row strong {
@@ -2639,21 +2640,22 @@ body.modal-open { overflow: hidden; }
 }
 
 .case-trend {
-  padding: 3px 9px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: rgba(85, 168, 45, 0.32);
   color: #8be05a;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
 .case-chip {
-  align-self: flex-start;
-  padding: 4px 8px;
+  justify-self: end;
+  align-self: center;
+  padding: 3px 7px;
   border-radius: 999px;
   background: #141414;
   color: var(--t1);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -2668,9 +2670,10 @@ body.modal-open { overflow: hidden; }
 }
 
 .case-info-grid {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 10px;
 }
 
 .case-info-grid div {
@@ -2680,24 +2683,25 @@ body.modal-open { overflow: hidden; }
 .case-info-grid span {
   display: block;
   color: var(--teal);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 800;
+  line-height: 1.1;
 }
 
 .case-info-grid strong {
   display: block;
-  margin-top: 2px;
+  margin-top: 1px;
   overflow: hidden;
   color: var(--t1);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .case-info-grid .case-location {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .case-comments-panel {
@@ -2865,7 +2869,7 @@ body.modal-open { overflow: hidden; }
 
 .map-minimap-layer .map-layer-options {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.32fr);
   flex: 1;
   min-width: 0;
   overflow: visible;
@@ -2887,12 +2891,21 @@ body.modal-open { overflow: hidden; }
   cursor: pointer;
 }
 
+.map-layer-option.has-model-select,
+.map-layer-option[data-layer-id="growth_status"] {
+  grid-template-columns: 14px 8px minmax(0, 0.92fr) minmax(96px, 0.78fr);
+}
+
 .map-minimap-layer .map-layer-option {
   grid-template-columns: 14px 8px minmax(0, 1fr);
   gap: 6px;
   width: auto;
   min-height: 26px;
   padding: 4px 6px;
+}
+
+.map-minimap-layer .map-layer-option[data-layer-id="growth_status"] {
+  grid-template-columns: 14px 8px minmax(0, 0.7fr) minmax(102px, 1fr);
 }
 
 .map-layer-option.is-active {
@@ -2932,6 +2945,41 @@ body.modal-open { overflow: hidden; }
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.growth-model-select {
+  min-width: 0;
+  width: 100%;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  outline: 0;
+  background: #121212;
+  color: rgba(244, 244, 241, 0.9);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.growth-model-select:focus {
+  border-color: rgba(69, 212, 106, 0.7);
+}
+
+.growth-model-select.is-loading {
+  opacity: 0.68;
+}
+
+.growth-model-select:disabled {
+  color: rgba(184, 190, 185, 0.42);
+  cursor: default;
+}
+
+.growth-model-select option {
+  background: #202020;
+  color: #f4f4f1;
 }
 
 .map-layer-option.is-active .map-layer-name {
@@ -3742,7 +3790,7 @@ body.modal-open { overflow: hidden; }
   }
 
   .case-info-grid {
-    gap: 7px 10px;
+    gap: 5px 8px;
   }
 
   .case-comment-input {
@@ -4302,6 +4350,7 @@ body.modal-open { overflow: hidden; }
 }
 
 .map-minimap-layer .map-layer-options {
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.32fr);
   gap: 7px;
 }
 
@@ -4350,8 +4399,8 @@ body.modal-open { overflow: hidden; }
 }
 
 .map-minimap-layer .map-layer-option {
-  min-height: 30px;
-  padding: 5px 7px;
+  min-height: 28px;
+  padding: 4px 6px;
   border-radius: 5px;
   background: #1b1b1b;
   border-color: rgba(255, 255, 255, 0.06);
@@ -4389,7 +4438,7 @@ body.modal-open { overflow: hidden; }
 }
 
 .case-info-panel {
-  gap: 11px;
+  gap: 6px 10px;
   padding: 0;
   border-bottom: none;
 }
@@ -5157,6 +5206,7 @@ body.modal-open { overflow: hidden; }
   }
 
   .map-minimap-layer .map-layer-options {
+    grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.34fr);
     gap: 5px;
   }
 
@@ -5170,7 +5220,7 @@ body.modal-open { overflow: hidden; }
   }
 
   .case-info-grid {
-    gap: 8px;
+    gap: 5px;
   }
 
   .case-comments-panel {

@@ -108,7 +108,9 @@ const UI_TEXT = {
     "map.panLeft": "Pan left",
     "map.panRight": "Pan right",
     "mapLayer.disease_pest_risk": "Pest Risk",
-    "mapLayer.growth_status": "Growth Status",
+    "mapLayer.growth_status": "Detection Results",
+    "growthModel.none": "No detection",
+    "growthModel.selectAria": "Growth detection model",
     "case.confidence": "Confidence",
     "case.improving": "Improving",
     "case.firstIssue": "First issue reported",
@@ -191,7 +193,9 @@ const UI_TEXT = {
     "map.panLeft": "왼쪽 이동",
     "map.panRight": "오른쪽 이동",
     "mapLayer.disease_pest_risk": "병충해 위험",
-    "mapLayer.growth_status": "생육 상태",
+    "mapLayer.growth_status": "검출결과",
+    "growthModel.none": "검출 없음",
+    "growthModel.selectAria": "생육 검출 모델",
     "case.confidence": "신뢰도",
     "case.improving": "개선 중",
     "case.firstIssue": "최초 이슈 보고",
@@ -945,6 +949,17 @@ async function loadGrowthDetectionsForModel(modelId) {
   }
 }
 
+function clearGrowthDetectionModel() {
+  const summary = document.getElementById("datasetSummary");
+  const sessionName = summary?.dataset.sessionName || "-";
+  activeGrowthDetectionModelId = "";
+  activeMiniMapLayerIds.delete("growth_status");
+  currentGrowthDetections = normalizeGrowthDetections(null, sessionName);
+  if (currentMap) currentMap.setGrowthDetections(null);
+  updateMapLayerControlStates();
+  currentMap?.queueRender();
+}
+
 function isPestRiskPhotoOverlayEnabled() {
   return activeMiniMapLayerIds.has("disease_pest_risk");
 }
@@ -1148,7 +1163,7 @@ function chooseGrowthDetectionModel(models, preferred = activeGrowthDetectionMod
     return DEFAULT_GROWTH_DETECTION_MODEL_ID;
   }
   if (models.some((model) => model.id === "yolo11s" && model.available)) return "yolo11s";
-  return models.find((model) => model.available)?.id || models[0]?.id || DEFAULT_GROWTH_DETECTION_MODEL_ID;
+  return models.find((model) => model.available)?.id || "";
 }
 
 function getHarvestStageInfo(value) {
@@ -4641,7 +4656,6 @@ function renderMapLayerControls(layers) {
   selector.hidden = false;
   selector.innerHTML = `
     <div class="map-layer-options"></div>
-    <div class="growth-model-options" aria-label="Growth detection model"></div>
   `;
   const options = selector.querySelector(".map-layer-options");
 
@@ -4650,6 +4664,9 @@ function renderMapLayerControls(layers) {
     label.className = "map-layer-option";
     label.dataset.layerId = layer.id;
     label.title = layer.description || layer.label;
+    if (layer.id === "growth_status") {
+      label.classList.add("has-model-select");
+    }
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -4663,9 +4680,31 @@ function renderMapLayerControls(layers) {
     const text = createElement("span", "map-layer-name", t(`mapLayer.${layer.id}`) || layer.label);
 
     label.append(checkbox, indicator, text);
+    if (layer.id === "growth_status") {
+      const modelSelect = document.createElement("select");
+      modelSelect.className = "growth-model-select";
+      modelSelect.setAttribute("aria-label", t("growthModel.selectAria"));
+      label.appendChild(modelSelect);
+    }
     label.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", () => {
-      setMiniMapLayerVisible(layer.id, checkbox.checked);
+      if (layer.id !== "growth_status") {
+        setMiniMapLayerVisible(layer.id, checkbox.checked);
+        return;
+      }
+      if (!checkbox.checked) {
+        setMiniMapLayerVisible(layer.id, false);
+        return;
+      }
+      const fallback = activeGrowthDetectionModelId
+        || chooseGrowthDetectionModel(currentGrowthDetectionModels, DEFAULT_GROWTH_DETECTION_MODEL_ID);
+      if (!fallback) {
+        setMiniMapLayerVisible(layer.id, false);
+        return;
+      }
+      activeGrowthDetectionModelId = fallback;
+      setMiniMapLayerVisible(layer.id, true);
+      void loadGrowthDetectionsForModel(fallback);
     });
     options.appendChild(label);
   }
@@ -4675,41 +4714,36 @@ function renderMapLayerControls(layers) {
 }
 
 function renderGrowthModelControls(selector = document.getElementById("mapLayerSelector")) {
-  const container = selector?.querySelector(".growth-model-options");
-  if (!container) return;
+  const select = selector?.querySelector(".growth-model-select");
+  if (!select) return;
   const models = currentGrowthDetectionModels.filter((model) => model.available);
-  if (!models.length) {
-    container.hidden = true;
-    container.innerHTML = "";
-    return;
-  }
-  container.hidden = false;
-  container.innerHTML = "";
+  select.innerHTML = "";
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = t("growthModel.none");
+  select.appendChild(noneOption);
   for (const model of models) {
-    const label = document.createElement("label");
-    label.className = "growth-model-option";
-    label.dataset.modelId = model.id;
-    label.title = model.dataPath || model.label;
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.name = "growth-detection-model";
-    checkbox.value = model.id;
-
-    const text = createElement("span", "growth-model-name", model.label || model.id);
-    label.append(checkbox, text);
-    label.addEventListener("click", (event) => event.stopPropagation());
-    checkbox.addEventListener("change", () => {
-      if (!checkbox.checked) {
-        checkbox.checked = true;
-        return;
-      }
-      activeMiniMapLayerIds.add("growth_status");
-      updateMapLayerControlStates();
-      void loadGrowthDetectionsForModel(model.id);
-    });
-    container.appendChild(label);
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.label || model.id;
+    option.title = model.dataPath || model.label;
+    select.appendChild(option);
   }
+  select.disabled = !models.length;
+  select.addEventListener("pointerdown", (event) => event.stopPropagation());
+  select.addEventListener("click", (event) => event.stopPropagation());
+  select.addEventListener("change", (event) => {
+    event.stopPropagation();
+    const modelId = select.value;
+    if (!modelId) {
+      clearGrowthDetectionModel();
+      return;
+    }
+    activeGrowthDetectionModelId = modelId;
+    activeMiniMapLayerIds.add("growth_status");
+    updateMapLayerControlStates();
+    void loadGrowthDetectionsForModel(modelId);
+  });
   updateGrowthModelControlStates();
 }
 
@@ -4734,12 +4768,10 @@ function updateMapLayerControlStates() {
 }
 
 function updateGrowthModelControlStates({ loading = false } = {}) {
-  for (const option of document.querySelectorAll(".growth-model-option")) {
-    const isActive = option.dataset.modelId === activeGrowthDetectionModelId;
-    option.classList.toggle("is-active", isActive);
-    option.classList.toggle("is-loading", loading && isActive);
-    const checkbox = option.querySelector("input[type='checkbox']");
-    if (checkbox) checkbox.checked = isActive;
+  for (const select of document.querySelectorAll(".growth-model-select")) {
+    const hasModel = Array.from(select.options).some((option) => option.value === activeGrowthDetectionModelId);
+    select.value = hasModel ? activeGrowthDetectionModelId : "";
+    select.classList.toggle("is-loading", loading && Boolean(select.value));
   }
 }
 
@@ -5493,12 +5525,16 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   );
 
   let growthDetections = null;
-  try {
-    growthDetections = await fetchJson(
-      `/api/devices/${deviceName}/sessions/${sessionName}/growth-detections?model=${encodeURIComponent(activeGrowthDetectionModelId)}`,
-    );
-  } catch (_) {
-    growthDetections = null;
+  if (activeGrowthDetectionModelId) {
+    try {
+      growthDetections = await fetchJson(
+        `/api/devices/${deviceName}/sessions/${sessionName}/growth-detections?model=${encodeURIComponent(activeGrowthDetectionModelId)}`,
+      );
+    } catch (_) {
+      growthDetections = null;
+    }
+  } else {
+    activeMiniMapLayerIds.delete("growth_status");
   }
   if (loadToken !== currentSessionLoadToken) return null;
   currentGrowthDetections = normalizeGrowthDetections(growthDetections, sessionName);
