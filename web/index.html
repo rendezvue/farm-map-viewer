@@ -143,22 +143,13 @@
                   </div>
                 </div>
               </div>
-              <div class="case-comments-panel">
-                <h3 data-i18n="comments.title">Comments</h3>
-                <textarea id="caseCommentInput" class="case-comment-input" data-i18n-placeholder="comments.placeholder" placeholder="Add a comment."></textarea>
-                <button id="caseCommentSubmit" class="case-comment-submit" type="button" data-i18n="comments.submit">Submit</button>
-                <div id="caseCommentList" class="case-comment-list">
-                  <div class="case-comment">
-                    <div class="case-comment-author"><span class="case-avatar">MK</span><strong>Mike</strong></div>
-                    <p data-i18n="comments.sampleMike">The severity of the pest seems to improve.</p>
-                    <time>12/11/2024 - 10:00</time>
-                  </div>
-                  <div class="case-comment">
-                    <div class="case-comment-author"><span class="case-avatar case-avatar-alt">FC</span><strong>Francis</strong></div>
-                    <p data-i18n="comments.sampleFrancis">This issue has been confirmed by me but it's not treated yet.</p>
-                    <time>10/11/2024 - 14:31</time>
-                  </div>
+              <div class="map-statistics-panel" id="mapStatisticsPanel">
+                <div class="map-statistics-head">
+                  <h3 data-i18n="stats.title">Statistics</h3>
+                  <span id="mapStatisticsSession" class="map-statistics-session">-</span>
                 </div>
+                <div id="mapStatisticsGrid" class="map-statistics-grid"></div>
+                <div id="mapStatisticsBars" class="map-statistics-bars"></div>
               </div>
             </div>
             <div class="map-main-layer">

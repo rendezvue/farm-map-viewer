@@ -61,6 +61,16 @@ function createElement(tag, className, text) {
   return el;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
 const LANGUAGE_STORAGE_KEY = "farmMapViewerLanguage";
 const DEFAULT_LANGUAGE = "en";
 const SUPPORTED_LANGUAGES = new Set(["en", "kr"]);
@@ -292,6 +302,7 @@ function applyLanguage({ rerender = true } = {}) {
   refreshHostSelectLabels();
   if (!rerender) return;
   renderCropPanel(currentCropSummary);
+  renderMapStatisticsPanel(currentCropSummary);
   if (currentLayersData) renderMapLayerControls(currentLayersData);
   currentMap?.queueRender();
 }
@@ -792,6 +803,177 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
       <strong>${item.value}</strong>
     </div>
   `).join("");
+}
+
+function buildProductionTrendSvg() {
+  return `
+    <svg class="production-trend-svg" viewBox="0 0 760 300" role="img" aria-label="생산 수량 추이">
+      <defs>
+        <linearGradient id="productionTargetBand" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#d9dde5" stop-opacity="0.7" />
+          <stop offset="100%" stop-color="#d9dde5" stop-opacity="0.38" />
+        </linearGradient>
+      </defs>
+      <text class="prod-axis-unit" x="0" y="31">(kg)</text>
+      <g class="prod-grid">
+        <line x1="62" y1="38" x2="646" y2="38" />
+        <line x1="62" y1="83" x2="646" y2="83" />
+        <line x1="62" y1="128" x2="646" y2="128" />
+        <line x1="62" y1="173" x2="646" y2="173" />
+        <line x1="62" y1="218" x2="646" y2="218" />
+      </g>
+      <path class="prod-axis-lines" d="M62 38 V262 H646" />
+      <g class="prod-y-labels">
+        <text x="48" y="44">2,500</text>
+        <text x="48" y="89">2,000</text>
+        <text x="48" y="134">1,500</text>
+        <text x="48" y="179">1,000</text>
+        <text x="48" y="224">500</text>
+        <text x="48" y="267">0</text>
+      </g>
+      <g class="prod-x-labels">
+        <text x="66" y="291">4/1</text>
+        <text x="150" y="291">4/15</text>
+        <text x="253" y="291">5/1</text>
+        <text x="351" y="291">5/15</text>
+        <text x="466" y="291">6/1</text>
+        <text x="563" y="291">6/15</text>
+        <text x="646" y="291">6/30</text>
+      </g>
+      <path class="prod-target-band" d="M351 160 C402 151 443 134 485 110 C537 78 592 45 646 38 L646 96 C591 98 541 111 492 130 C443 149 398 164 351 174 Z" />
+      <path class="prod-actual-line" d="M62 262 L76 259 L90 259 L104 255 L119 253 L132 247 L145 241 L157 232 L169 228 L181 215 L193 205 L207 201 L221 188 L236 181 L251 171 L267 164 L283 157 L300 154 L318 151 L336 149 L351 147" />
+      <path class="prod-forecast-line" d="M351 147 C397 140 437 127 480 110 C528 90 574 73 646 66" />
+      <circle class="prod-dot prod-dot-actual" cx="351" cy="147" r="7" />
+      <circle class="prod-dot prod-dot-forecast" cx="646" cy="66" r="7" />
+      <g class="prod-callout prod-callout-actual">
+        <rect x="297" y="84" width="110" height="42" rx="7" />
+        <text x="352" y="111">1,280 kg</text>
+      </g>
+      <g class="prod-callout prod-callout-forecast">
+        <rect x="567" y="-2" width="159" height="42" rx="7" />
+        <path class="prod-callout-pointer" d="M640 40 L652 40 L646 51 Z" />
+        <text x="646" y="25">예측 2,150 kg</text>
+      </g>
+      <text class="prod-target-label" x="660" y="111">
+        <tspan x="660" dy="0">목표 범위</tspan>
+        <tspan x="660" dy="22">1,900 ~</tspan>
+        <tspan x="660" dy="22">2,400 kg</tspan>
+      </text>
+    </svg>
+  `;
+}
+
+function productionIconMarkup(name) {
+  const attrs = `viewBox="0 0 24 24" aria-hidden="true" focusable="false"`;
+  if (name === "bug") {
+    return `
+      <svg ${attrs}>
+        <path d="M8.5 8.3c0-2 1.4-3.5 3.5-3.5s3.5 1.5 3.5 3.5v1.1h-7V8.3Z" />
+        <path d="M7.5 10.1h9v4.2c0 3.1-1.8 5.2-4.5 5.2s-4.5-2.1-4.5-5.2v-4.2Z" />
+        <path d="M5 11.5H2.8M21.2 11.5H19M5 15.4H3M21 15.4h-2M8 5.3 6.4 3.7M16 5.3l1.6-1.6" />
+      </svg>
+    `;
+  }
+  if (name === "pin") {
+    return `
+      <svg ${attrs}>
+        <path d="M12 21s6.2-5.5 6.2-11a6.2 6.2 0 0 0-12.4 0C5.8 15.5 12 21 12 21Z" />
+        <circle cx="12" cy="10" r="2.3" />
+      </svg>
+    `;
+  }
+  if (name === "calendar") {
+    return `
+      <svg ${attrs}>
+        <rect x="4.2" y="5.4" width="15.6" height="14.2" rx="2" />
+        <path d="M8 3.6v4M16 3.6v4M4.2 9.2h15.6" />
+      </svg>
+    `;
+  }
+  return `
+    <svg ${attrs}>
+      <path d="M12 21V10.9" />
+      <path d="M11.8 11.4c-2.9.2-5.2-.6-6.7-2.3C3.7 7.5 3.2 5.4 3.3 3.2c2.6-.1 4.8.6 6.4 2.1 1.5 1.4 2.2 3.4 2.1 6.1Z" />
+      <path d="M12.2 13.1c2.6.1 4.7-.7 6.1-2.2 1.3-1.5 1.8-3.4 1.7-5.4-2.4-.1-4.4.6-5.9 2-1.4 1.3-2 3.2-1.9 5.6Z" />
+    </svg>
+  `;
+}
+
+function renderMapStatisticsPanel(summary = currentCropSummary) {
+  const panel = document.getElementById("mapStatisticsPanel");
+  if (!panel) return;
+
+  const summaryItems = [
+    { icon: "sprout", label: "생육 이상", value: "2구역", tone: "growth" },
+    { icon: "bug", label: "병충해 의심", value: "3건", tone: "pest" },
+    { icon: "pin", label: "주의 구역", value: "4개 레일", tone: "zone" },
+  ];
+  const managementItems = [
+    {
+      icon: "leaf",
+      title: "생육 관리",
+      body: "잎자람 억제 및\n영양 균형 유지",
+      tone: "growth",
+    },
+    {
+      icon: "bug",
+      title: "병해충 관리",
+      body: "잎곰팡이병·총채벌레\n예방 중심 집중 관리",
+      tone: "pest",
+    },
+    {
+      icon: "calendar",
+      title: "수확 계획",
+      body: "예상 수확 피크\n6/10 ~ 6/20",
+      tone: "harvest",
+    },
+  ];
+
+  panel.classList.add("left-dashboard-panel", "production-dashboard");
+  panel.innerHTML = `
+    <section class="production-card production-trend-card">
+      <div class="production-card-head">
+        <h3>생산 수량 추이</h3>
+        <button class="production-detail-btn" type="button">상세 보기<span aria-hidden="true"></span></button>
+      </div>
+      <div class="production-legend" aria-hidden="true">
+        <span class="legend-actual">누적 실제</span>
+        <span class="legend-forecast">예측</span>
+        <span class="legend-target">목표 범위</span>
+      </div>
+      ${buildProductionTrendSvg()}
+    </section>
+    <section class="production-card production-issue-card">
+      <h3>이슈 요약</h3>
+      <div class="production-summary-row">
+        ${summaryItems.map((item) => `
+          <div class="production-summary-item production-tone-${item.tone}">
+            <span class="production-summary-icon" aria-hidden="true">${productionIconMarkup(item.icon)}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <em>${escapeHtml(item.value)}</em>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="production-management">
+        <h4>권장 관리 포인트</h4>
+        <div class="production-management-grid">
+          ${managementItems.map((item) => `
+            <button class="production-management-card production-tone-${item.tone}" type="button">
+              <span class="production-management-icon" aria-hidden="true">${productionIconMarkup(item.icon)}</span>
+              <span class="production-management-copy">
+                <strong>${escapeHtml(item.title)}</strong>
+                <small>${escapeHtml(item.body).replace(/\n/g, "<br>")}</small>
+              </span>
+              <span class="production-card-arrow" aria-hidden="true"></span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </section>
+    <p class="production-footnote"><span aria-hidden="true">i</span> 데이터는 수집 환경에 따라 오차가 있을 수 있습니다.</p>
+  `;
 }
 
 function initCasePanel() {
@@ -5572,6 +5754,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     mapSessionChip.textContent = `${t("common.aiAnalysis")} · ${sessionName}`;
   }
   renderCropPanel(currentCropSummary);
+  renderMapStatisticsPanel(currentCropSummary);
 
   if (currentMap) {
     currentMap.destroy();
@@ -5732,6 +5915,7 @@ async function bootstrap() {
   const summary = document.getElementById("datasetSummary");
   initLanguageToggle();
   renderCropPanel();
+  renderMapStatisticsPanel();
   initCasePanel();
   initInspectorTabs();
   initMapControls();
@@ -5790,6 +5974,7 @@ async function bootstrap() {
     activeGrowthDetectionModelId = DEFAULT_GROWTH_DETECTION_MODEL_ID;
     selectedPestDetectionId = null;
     renderCropPanel(currentCropSummary);
+    renderMapStatisticsPanel(currentCropSummary);
     summary.dataset.summaryState = "loading";
     summary.dataset.deviceName = deviceName;
     summary.dataset.sessionName = sessionName;
