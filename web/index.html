@@ -43,23 +43,156 @@
       <div class="content-area">
         <aside class="sidebar">
 
-          <!-- 1. AI 검출 현황 -->
-          <section class="panel panel-crop panel-primary" id="cropPanel">
-            <div class="panel-head panel-head-toggle" id="cropPanelHead">
-              <h2 data-i18n="sidebar.aiDetections">AI detections</h2>
-              <div class="panel-head-right">
-                <span class="ai-badge" data-i18n="common.aiAnalysis">AI analysis</span>
-                <button class="panel-collapse-btn" id="cropCollapseBtn" type="button" aria-expanded="true">▾</button>
-              </div>
+          <!-- 1. 생산 수량 추이 -->
+          <section class="panel panel-production" id="productionPanel">
+            <div class="panel-head">
+              <h2>생산 수량 추이</h2>
+              <button class="prod-detail-btn" type="button">상세 보기 ›</button>
             </div>
-            <div class="panel-body" id="cropPanelBody">
-              <div class="crop-session-label" id="cropSessionLabel">Session detections (-)</div>
-              <div class="crop-overview" id="cropOverview"></div>
-              <div class="crop-stats" id="cropStats"></div>
-              <div class="crop-chart-wrap">
-                <div class="crop-chart-title">Last 30 days</div>
-                <div id="cropChart" class="crop-chart"></div>
-                <div class="crop-chart-legend" id="cropChartLegend"></div>
+            <div class="prod-legend">
+              <span class="prod-legend-item"><span class="prod-legend-line is-actual" aria-hidden="true"></span>누적 실적</span>
+              <span class="prod-legend-item"><span class="prod-legend-line is-forecast" aria-hidden="true"></span>예측</span>
+              <span class="prod-legend-item"><span class="prod-legend-line is-target" aria-hidden="true"></span>목표 범위</span>
+            </div>
+            <div class="prod-chart-wrap">
+              <svg class="prod-chart" viewBox="0 0 320 178" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="생산 수량 추이 차트">
+                <!-- y axis unit (placed above the topmost label to avoid overlap) -->
+                <text x="14" y="11" class="prod-axis-unit">(kg)</text>
+
+                <!-- gridlines and y axis labels (shifted down 8px to leave room for (kg)) -->
+                <g class="prod-grid">
+                  <line x1="34" y1="28" x2="290" y2="28"/>
+                  <line x1="34" y1="50" x2="290" y2="50"/>
+                  <line x1="34" y1="72" x2="290" y2="72"/>
+                  <line x1="34" y1="94" x2="290" y2="94"/>
+                  <line x1="34" y1="116" x2="290" y2="116"/>
+                  <line x1="34" y1="138" x2="290" y2="138"/>
+                </g>
+                <g class="prod-y-labels">
+                  <text x="30" y="31">2,500</text>
+                  <text x="30" y="53">2,000</text>
+                  <text x="30" y="75">1,500</text>
+                  <text x="30" y="97">1,000</text>
+                  <text x="30" y="119">500</text>
+                  <text x="30" y="141">0</text>
+                </g>
+
+                <!-- target range cone — symmetric around the forecast curve -->
+                <!-- forecast curve uses cubic C200,70 240,56 290,43.4
+                     upper edge is the same curve shifted up (by 0,10,10,11)
+                     lower edge is the same curve shifted down (by 0,10,10,11)
+                     so the cone stays visually aligned with the dashed forecast -->
+                <path class="prod-target-fill"
+                      d="M150,81.7
+                         C200,60 240,46 290,32.4
+                         L290,54.4
+                         C240,66 200,80 150,81.7 Z"/>
+                <path class="prod-target-edge"
+                      d="M150,81.7 C200,60 240,46 290,32.4"/>
+                <path class="prod-target-edge"
+                      d="M150,81.7 C200,80 240,66 290,54.4"/>
+
+                <!-- forecast dashed line (centered inside the cone) -->
+                <path class="prod-forecast"
+                      d="M150,81.7 C200,70 240,56 290,43.4"/>
+
+                <!-- actual cumulative solid line (Y values shifted +8) -->
+                <path class="prod-actual"
+                      d="M34,138
+                         L46,136 L58,133 L70,129 L82,125 L94,120
+                         L106,113 L118,105 L130,97 L138,91 L146,85 L150,81.7"/>
+
+                <!-- end-point markers -->
+                <circle class="prod-marker is-actual"   cx="150" cy="81.7" r="3.2"/>
+                <circle class="prod-marker is-forecast" cx="290" cy="43.4" r="3.2"/>
+
+                <!-- leader line for forecast badge -->
+                <line class="prod-leader" x1="290" y1="43.4" x2="290" y2="28"/>
+
+                <!-- x axis labels -->
+                <g class="prod-x-labels">
+                  <text x="34"  y="156">4/1</text>
+                  <text x="76"  y="156">4/15</text>
+                  <text x="118" y="156">5/1</text>
+                  <text x="150" y="156">5/15</text>
+                  <text x="190" y="156">6/1</text>
+                  <text x="230" y="156">6/15</text>
+                  <text x="290" y="156">6/30</text>
+                </g>
+
+                <!-- 1,280 kg badge -->
+                <g class="prod-badge is-actual" transform="translate(126,60)">
+                  <rect x="0" y="0" width="48" height="16" rx="8" ry="8"/>
+                  <text x="24" y="11">1,280 kg</text>
+                </g>
+                <line class="prod-badge-stem is-actual" x1="150" y1="76" x2="150" y2="80"/>
+
+                <!-- 예측 2,150 kg badge -->
+                <g class="prod-badge is-forecast" transform="translate(232,12)">
+                  <rect x="0" y="0" width="60" height="16" rx="8" ry="8"/>
+                  <text x="30" y="11">예측 2,150 kg</text>
+                </g>
+
+                <!-- target range note on right -->
+                <g class="prod-target-note-svg" transform="translate(296,66)">
+                  <text x="0" y="0">목표 범위</text>
+                  <text x="0" y="11">1,900 ~</text>
+                  <text x="0" y="22">2,400 kg</text>
+                </g>
+              </svg>
+            </div>
+          </section>
+
+          <!-- 2. 이슈 요약 -->
+          <section class="panel panel-issues" id="issuesPanel">
+            <div class="panel-head">
+              <h2>이슈 요약</h2>
+            </div>
+            <div class="issues-grid">
+              <div class="issue-card is-warn">
+                <span class="issue-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 21c0-6 3-9 9-9-1 6-4 9-9 9z"/>
+                    <path d="M12 21c0-6-3-9-9-9 1 6 4 9 9 9z"/>
+                    <path d="M12 21V11"/>
+                  </svg>
+                </span>
+                <div class="issue-text">
+                  <span class="issue-label">생육 이상</span>
+                  <strong class="issue-value">2구역</strong>
+                </div>
+              </div>
+              <div class="issue-card is-bad">
+                <span class="issue-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <ellipse cx="12" cy="13" rx="5" ry="6"/>
+                    <path d="M12 7V4"/>
+                    <path d="M10 4l-1-2"/>
+                    <path d="M14 4l1-2"/>
+                    <path d="M7 10L4 8"/>
+                    <path d="M17 10l3-2"/>
+                    <path d="M7 13H3"/>
+                    <path d="M17 13h4"/>
+                    <path d="M7 16l-3 2"/>
+                    <path d="M17 16l3 2"/>
+                  </svg>
+                </span>
+                <div class="issue-text">
+                  <span class="issue-label">병충해 의심</span>
+                  <strong class="issue-value">3건</strong>
+                </div>
+              </div>
+              <div class="issue-card is-warm">
+                <span class="issue-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z"/>
+                    <circle cx="12" cy="10" r="2.5"/>
+                  </svg>
+                </span>
+                <div class="issue-text">
+                  <span class="issue-label">주의 구역</span>
+                  <strong class="issue-value">4개 레일</strong>
+                </div>
               </div>
             </div>
           </section>

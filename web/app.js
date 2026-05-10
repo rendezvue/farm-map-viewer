@@ -134,6 +134,32 @@ const UI_TEXT = {
     "comments.sampleFrancis": "This issue has been confirmed by me but it's not treated yet.",
     "comments.you": "You",
     "comments.justNow": "Just now",
+    "stats.title": "Statistics",
+    "stats.session": "Session {session}",
+    "stats.totalDetections": "Total detections",
+    "stats.pestSignals": "Pest signals",
+    "stats.affectedRails": "Affected rails",
+    "stats.maturity": "Maturity",
+    "stats.frames": "Frames",
+    "stats.rails": "Rails",
+    "stats.stageShare": "Stage share",
+    "left.issueSummary": "Issue Summary",
+    "left.detectionCases": "Detections",
+    "left.activeIssues": "Spreading issues",
+    "left.highRiskZones": "High-risk zones",
+    "left.stableZones": "Stable zones",
+    "left.growthDistribution": "Growth Distribution",
+    "left.issueTrend": "Issue Trend",
+    "left.detectionCount": "Detections",
+    "left.expertInsight": "Expert Insight",
+    "left.recentOpinions": "Recent Opinions",
+    "left.more": "More",
+    "left.recommendedAction": "View recommended action",
+    "left.addOpinion": "Add opinion",
+    "left.insightText": "Powdery mildew signals are spreading. Strengthen humidity control and ventilation, and prioritize focused treatment in affected rows.",
+    "left.opinionKim": "Rows 7-9 in Area A need medium symptom confirmation.",
+    "left.opinionPark": "Added leaf underside observation and adjusted ventilation.",
+    "left.opinionLee": "Please keep monitoring high-risk sections.",
     "hud.zoom": "Zoom",
     "hud.cameraXY": "Camera XY",
     "hud.scale": "Scale",
@@ -219,6 +245,32 @@ const UI_TEXT = {
     "comments.sampleFrancis": "제가 확인한 이슈지만 아직 처리되지는 않았습니다.",
     "comments.you": "나",
     "comments.justNow": "방금",
+    "stats.title": "통계",
+    "stats.session": "세션 {session}",
+    "stats.totalDetections": "전체 검출",
+    "stats.pestSignals": "병충해 신호",
+    "stats.affectedRails": "영향 레일",
+    "stats.maturity": "성숙도",
+    "stats.frames": "사진",
+    "stats.rails": "레일",
+    "stats.stageShare": "생육 분포",
+    "left.issueSummary": "이슈 요약",
+    "left.detectionCases": "검출 건수",
+    "left.activeIssues": "확산 이슈",
+    "left.highRiskZones": "고위험 구간",
+    "left.stableZones": "안정 구간",
+    "left.growthDistribution": "생육 분포",
+    "left.issueTrend": "이슈 추이",
+    "left.detectionCount": "검출 건수",
+    "left.expertInsight": "전문가 인사이트",
+    "left.recentOpinions": "최근 의견",
+    "left.more": "더보기",
+    "left.recommendedAction": "권장 조치 보기",
+    "left.addOpinion": "의견 남기기",
+    "left.insightText": "흰가루병 발생이 확산되는 추세입니다. 습도 관리 및 환기 강화를 통해 확산 구역 집중 방제를 권장합니다.",
+    "left.opinionKim": "A구역 7~9열에서 잎 뒷면 중세 확인. 예방제 살포 검토하겠습니다.",
+    "left.opinionPark": "재엽 대비 농약 추가, 환기 및 개방 시간 조정했습니다.",
+    "left.opinionLee": "고위험 구간 모니터링 강화 부탁드립니다.",
     "hud.zoom": "배율",
     "hud.cameraXY": "카메라 XY",
     "hud.scale": "스케일",
@@ -257,8 +309,10 @@ let currentLanguage = (() => {
 })();
 
 function t(key, values = {}) {
-  const fallback = UI_TEXT.en[key] || key;
-  const template = UI_TEXT[currentLanguage]?.[key] || fallback;
+  const hasEnglish = Object.prototype.hasOwnProperty.call(UI_TEXT.en, key);
+  const hasLocalized = Object.prototype.hasOwnProperty.call(UI_TEXT[currentLanguage] || {}, key);
+  const fallback = hasEnglish ? UI_TEXT.en[key] : key;
+  const template = hasLocalized ? UI_TEXT[currentLanguage][key] : fallback;
   return template.replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "");
 }
 
@@ -285,7 +339,7 @@ function applyLanguage({ rerender = true } = {}) {
   for (const annotation of document.querySelectorAll(".frame-annotation[data-frame-id]")) {
     const label = annotation.querySelector(".frame-annotation-label");
     const frame = currentMap?.framesById?.get(annotation.dataset.frameId);
-    if (label && frame) label.textContent = formatFrameAnnotationLabel(frame);
+    if (label && frame) label.textContent = formatFrameDistanceLabel(frame);
   }
   for (const chip of document.querySelectorAll(".session-chip[data-rail-count][data-frame-count]")) {
     const meta = chip.querySelector(".session-chip-meta");
@@ -339,6 +393,20 @@ function formatFrameAnnotationLabel(frame) {
   return currentLanguage === "kr"
     ? `레일 ${railLabel} · ${distanceLabel}`
     : `Rail ${railLabel} · ${distanceLabel}`;
+}
+
+function formatFrameDistanceLabel(frame) {
+  const distance = Number(frame?.odom_x);
+  return Number.isFinite(distance) ? `${distance.toFixed(1)}m` : "-";
+}
+
+function formatRailRowLabel(railName) {
+  const raw = String(railName || "-").replace(/^rail[_-]?/i, "");
+  const railNumber = Number(raw);
+  const railLabel = Number.isFinite(railNumber) && railNumber > 0
+    ? String(Math.round(railNumber)).padStart(3, "0")
+    : raw.padStart(3, "0");
+  return currentLanguage === "kr" ? `레일 ${railLabel}` : `Rail ${railLabel}`;
 }
 
 function updateDatasetSummaryLanguage() {
@@ -430,30 +498,37 @@ const CROP_PANEL_SERIES = [
   {
     id: "flower",
     label: "꽃",
-    color: "#d96f9c",
+    color: "#d95f98",
   },
   {
     id: "unripe",
     label: "안익음",
-    color: "#67a95c",
+    color: "#62a75b",
   },
   {
     id: "midripe",
     label: "덜익음",
-    color: "#efb44a",
+    color: "#f0b342",
   },
   {
     id: "ripe",
     label: "익음",
-    color: "#d96844",
+    color: "#df6745",
   },
   {
     id: "pest",
     label: "병충해",
-    color: "#8f5f3f",
+    color: "#7b563d",
   },
 ];
 const CROP_MAP_CHART_SERIES = CROP_PANEL_SERIES.filter((series) => series.id !== "pest");
+const MINI_MAP_GROWTH_STAGE_ORDER = ["flower", "unripe", "midripe", "ripe"];
+const MINI_MAP_GROWTH_STAGE_COLORS = {
+  flower: "#d95f98",
+  unripe: "#62a75b",
+  midripe: "#f0b342",
+  ripe: "#df6745",
+};
 
 function toCropCount(value) {
   const numeric = Number(value);
@@ -797,15 +872,148 @@ function renderMapCropLegend(seriesData = buildCropSeriesData(getCropPanelState(
     { label: t("crop.maturity"), value: maturityScore == null ? "-" : maturityScore.toFixed(1), icon: "maturity", color: "#45d46a" },
   ];
   legend.innerHTML = resources.map((item) => `
-    <div class="map-resource-item" title="${item.label}" aria-label="${item.label} ${item.value}" style="--resource-color:${item.color}">
+    <div class="map-resource-item" title="${item.label}" aria-label="${item.label}" style="--resource-color:${item.color}">
       <span class="map-resource-icon map-resource-icon-${item.icon}"></span>
       <span class="map-resource-label">${item.label}</span>
-      <strong>${item.value}</strong>
     </div>
   `).join("");
 }
 
+function formatDashboardDate(dateValue, fallback = "") {
+  const date = dateValue ? new Date(`${dateValue}T00:00:00`) : null;
+  if (!date || Number.isNaN(date.getTime())) return fallback || String(dateValue || "");
+  return date.toLocaleDateString(currentLanguage === "kr" ? "ko-KR" : "en-US", {
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function getRiskLayerIssueStats() {
+  const layer = currentLayersData?.layers?.find((item) => item.id === "disease_pest_risk");
+  const items = Array.isArray(layer?.items) ? layer.items : [];
+  if (!items.length) {
+    return { highRiskZones: 0, stablePct: 0 };
+  }
+  const highRiskZones = items.filter((item) =>
+    item.severity === "high" || Number(item.value) >= 70
+  ).length;
+  const stableZones = items.filter((item) =>
+    item.severity === "low" || Number(item.value) < 40
+  ).length;
+  return {
+    highRiskZones,
+    stablePct: Math.round((stableZones / items.length) * 1000) / 10,
+  };
+}
+
+function formatIssueDetectionCases(value) {
+  const count = toCropCount(value);
+  if (count >= 1000) {
+    const major = Math.floor(count / 1000);
+    const minor = String(count % 1000).padStart(3, "0");
+    return `${formatCount(major)} / ${minor}`;
+  }
+  return formatCount(count);
+}
+
+function buildGrowthDistributionSvg(seriesData) {
+  const stages = seriesData.filter((series) => series.id !== "pest");
+  const total = Math.max(1, stages.reduce((sum, series) => sum + series.value, 0));
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const rings = stages.map((series) => {
+    const length = circumference * (series.value / total);
+    const segment = `
+      <circle cx="56" cy="56" r="${radius}" fill="none" stroke="${series.color}" stroke-width="24"
+        stroke-dasharray="${length.toFixed(2)} ${circumference.toFixed(2)}"
+        stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 56 56)" />
+    `;
+    offset += length;
+    return segment;
+  }).join("");
+  offset = 0;
+  const labels = stages.map((series) => {
+    const pct = (series.value / total) * 100;
+    const length = circumference * (series.value / total);
+    const angle = ((offset + length / 2) / circumference) * Math.PI * 2 - Math.PI / 2;
+    const x = 56 + Math.cos(angle) * radius;
+    const y = 56 + Math.sin(angle) * radius;
+    offset += length;
+    return `
+      <text class="left-growth-donut-label" x="${x.toFixed(1)}" y="${y.toFixed(1)}"
+        text-anchor="middle" dominant-baseline="central">${pct.toFixed(1)}%</text>
+    `;
+  }).join("");
+  return `
+    <svg class="left-growth-donut" viewBox="0 0 112 112" role="img" aria-label="${escapeHtml(t("left.growthDistribution"))}">
+      <circle cx="56" cy="56" r="${radius}" fill="none" stroke="#ebe4d7" stroke-width="24" />
+      ${rings}
+      <circle cx="56" cy="56" r="25" fill="#fffefa" />
+      <path class="left-growth-center-leaf" d="M61.5 50.5c-9.8.3-15.1 6.7-14 15.3 8.2.8 14.9-4.6 16.4-14.9-4.1 2.1-7.6 5.1-10.4 9.1 1.7-4.6 4.3-7.7 8-9.5z" />
+      ${labels}
+    </svg>
+  `;
+}
+
+function buildIssueTrendPoints(cropState, pestCount) {
+  const sourcePoint = cropState.points[cropState.points.length - 1] || {};
+  const endDate = sourcePoint.date ? new Date(`${sourcePoint.date}T00:00:00`) : new Date("2026-05-07T00:00:00");
+  const detectionBase = Math.max(1, Math.round((cropState.counts.total || 1) / 40));
+  const pestBase = Math.max(1, pestCount || cropState.counts.pest || 1);
+  const detectionFactors = [0.76, 0.78, 0.77, 0.82, 0.84, 0.9, 0.89, 1];
+  const pestFactors = [0.55, 0.6, 0.52, 0.62, 0.67, 0.82, 0.84, 1];
+  return detectionFactors.map((factor, index) => {
+    const date = new Date(endDate);
+    date.setDate(endDate.getDate() - (detectionFactors.length - 1 - index));
+    return {
+      label: formatDashboardDate(date.toISOString().slice(0, 10)),
+      detections: Math.max(0, Math.round(detectionBase * factor)),
+      issues: Math.max(0, Math.round(pestBase * pestFactors[index])),
+    };
+  });
+}
+
+function buildIssueTrendSvg(cropState, pestCount) {
+  const points = buildIssueTrendPoints(cropState, pestCount);
+  const width = 620;
+  const height = 150;
+  const pad = { left: 38, right: 38, top: 16, bottom: 28 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const maxDetections = Math.max(1, ...points.map((point) => point.detections));
+  const maxIssues = Math.max(1, ...points.map((point) => point.issues));
+  const xFor = (index) => pad.left + (plotW * index) / Math.max(1, points.length - 1);
+  const yDetections = (value) => pad.top + plotH - (value / maxDetections) * plotH;
+  const yIssues = (value) => pad.top + plotH - (value / maxIssues) * plotH;
+  const detectionPath = points.map((point, index) => `${xFor(index).toFixed(1)},${yDetections(point.detections).toFixed(1)}`).join(" ");
+  const issuePath = points.map((point, index) => `${xFor(index).toFixed(1)},${yIssues(point.issues).toFixed(1)}`).join(" ");
+  const xLabels = points.map((point, index) => `
+    <text x="${xFor(index).toFixed(1)}" y="${height - 7}" text-anchor="middle">${escapeHtml(point.label)}</text>
+  `).join("");
+  return `
+    <svg class="left-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("left.issueTrend"))}">
+      <line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" />
+      <polyline points="${detectionPath}" class="line-detections" />
+      <polyline points="${issuePath}" class="line-issues" />
+      ${points.map((point, index) => `
+        <circle cx="${xFor(index).toFixed(1)}" cy="${yDetections(point.detections).toFixed(1)}" r="3.2" class="dot-detections" />
+        <circle cx="${xFor(index).toFixed(1)}" cy="${yIssues(point.issues).toFixed(1)}" r="3.2" class="dot-issues" />
+      `).join("")}
+      ${xLabels}
+    </svg>
+  `;
+}
+
 function buildProductionTrendSvg() {
+  // Y mapping: y = 38 + (2500 - kg) / 2500 * 224
+  //   2,500 → 38 | 2,400 → 47 | 2,150 → 69 | 1,900 → 92
+  //   1,500 → 128 | 1,280 → 147 | 1,000 → 173 | 500 → 218 | 0 → 262
+  // Forecast: M351,147 → 646,69 (cubic)
+  // Target cone is the same forecast curve offset symmetrically
+  //   top  : forecast - {0, 7.5, 15, 22.5} (ends at 47)
+  //   bottom: forecast + {0, 7.5, 15, 22.5} (ends at 92)
+  // So at right end the cone spans 47 (=2,400 kg) to 92 (=1,900 kg)
   return `
     <svg class="production-trend-svg" viewBox="0 0 760 300" role="img" aria-label="생산 수량 추이">
       <defs>
@@ -814,7 +1022,7 @@ function buildProductionTrendSvg() {
           <stop offset="100%" stop-color="#d9dde5" stop-opacity="0.38" />
         </linearGradient>
       </defs>
-      <text class="prod-axis-unit" x="0" y="31">(kg)</text>
+      <text class="prod-axis-unit" x="14" y="22">(kg)</text>
       <g class="prod-grid">
         <line x1="62" y1="38" x2="646" y2="38" />
         <line x1="62" y1="83" x2="646" y2="83" />
@@ -824,37 +1032,39 @@ function buildProductionTrendSvg() {
       </g>
       <path class="prod-axis-lines" d="M62 38 V262 H646" />
       <g class="prod-y-labels">
-        <text x="48" y="44">2,500</text>
-        <text x="48" y="89">2,000</text>
-        <text x="48" y="134">1,500</text>
-        <text x="48" y="179">1,000</text>
-        <text x="48" y="224">500</text>
-        <text x="48" y="267">0</text>
+        <text x="55" y="42">2,500</text>
+        <text x="55" y="87">2,000</text>
+        <text x="55" y="132">1,500</text>
+        <text x="55" y="177">1,000</text>
+        <text x="55" y="222">500</text>
+        <text x="55" y="266">0</text>
       </g>
       <g class="prod-x-labels">
-        <text x="66" y="291">4/1</text>
-        <text x="150" y="291">4/15</text>
-        <text x="253" y="291">5/1</text>
-        <text x="351" y="291">5/15</text>
-        <text x="466" y="291">6/1</text>
-        <text x="563" y="291">6/15</text>
-        <text x="646" y="291">6/30</text>
+        <text x="66" y="285">4/1</text>
+        <text x="150" y="285">4/15</text>
+        <text x="253" y="285">5/1</text>
+        <text x="351" y="285">5/15</text>
+        <text x="466" y="285">6/1</text>
+        <text x="563" y="285">6/15</text>
+        <text x="646" y="285">6/30</text>
       </g>
-      <path class="prod-target-band" d="M351 160 C402 151 443 134 485 110 C537 78 592 45 646 38 L646 96 C591 98 541 111 492 130 C443 149 398 164 351 174 Z" />
+      <path class="prod-target-band" d="M351,147 C420,124.5 540,75 646,46.5 L646,91.5 C540,105 420,139.5 351,147 Z" />
+      <path class="prod-target-edge" d="M351,147 C420,124.5 540,75 646,46.5" />
+      <path class="prod-target-edge" d="M351,147 C420,139.5 540,105 646,91.5" />
       <path class="prod-actual-line" d="M62 262 L76 259 L90 259 L104 255 L119 253 L132 247 L145 241 L157 232 L169 228 L181 215 L193 205 L207 201 L221 188 L236 181 L251 171 L267 164 L283 157 L300 154 L318 151 L336 149 L351 147" />
-      <path class="prod-forecast-line" d="M351 147 C397 140 437 127 480 110 C528 90 574 73 646 66" />
+      <path class="prod-forecast-line" d="M351,147 C420,132 540,90 646,69" />
       <circle class="prod-dot prod-dot-actual" cx="351" cy="147" r="7" />
-      <circle class="prod-dot prod-dot-forecast" cx="646" cy="66" r="7" />
+      <circle class="prod-dot prod-dot-forecast" cx="646" cy="69" r="7" />
       <g class="prod-callout prod-callout-actual">
         <rect x="297" y="84" width="110" height="42" rx="7" />
         <text x="352" y="111">1,280 kg</text>
       </g>
       <g class="prod-callout prod-callout-forecast">
-        <rect x="567" y="-2" width="159" height="42" rx="7" />
-        <path class="prod-callout-pointer" d="M640 40 L652 40 L646 51 Z" />
-        <text x="646" y="25">예측 2,150 kg</text>
+        <rect x="567" y="2" width="159" height="42" rx="7" />
+        <path class="prod-callout-pointer" d="M640 44 L652 44 L646 55 Z" />
+        <text x="646" y="29">예측 2,150 kg</text>
       </g>
-      <text class="prod-target-label" x="660" y="111">
+      <text class="prod-target-label" x="660" y="105">
         <tspan x="660" dy="0">목표 범위</tspan>
         <tspan x="660" dy="22">1,900 ~</tspan>
         <tspan x="660" dy="22">2,400 kg</tspan>
@@ -912,7 +1122,7 @@ function renderMapStatisticsPanel(summary = currentCropSummary) {
     {
       icon: "leaf",
       title: "생육 관리",
-      body: "잎자람 억제 및\n영양 균형 유지",
+      body: "웃자람 억제 및\n영양 균형 유지",
       tone: "growth",
     },
     {
@@ -937,7 +1147,7 @@ function renderMapStatisticsPanel(summary = currentCropSummary) {
         <button class="production-detail-btn" type="button">상세 보기<span aria-hidden="true"></span></button>
       </div>
       <div class="production-legend" aria-hidden="true">
-        <span class="legend-actual">누적 실제</span>
+        <span class="legend-actual">누적 실적</span>
         <span class="legend-forecast">예측</span>
         <span class="legend-target">목표 범위</span>
       </div>
@@ -1056,33 +1266,33 @@ let selectedPestDetectionId = null;
 const COLOR_SCHEMES = {
   yellow_red: (v) => {
     const t = v / 100;
-    if (t < 0.4) return `rgba(250,200,30,${0.12 + t * 0.5})`;
-    if (t < 0.7) return `rgba(230,120,20,${0.18 + t * 0.45})`;
-    return `rgba(210,40,30,${0.22 + t * 0.5})`;
+    if (t < 0.4) return `rgba(240,179,66,${0.12 + t * 0.44})`;
+    if (t < 0.7) return `rgba(224,116,62,${0.17 + t * 0.4})`;
+    return `rgba(203,79,64,${0.22 + t * 0.44})`;
   },
   green_red: (v) => {
     const t = v / 100;
-    if (t < 0.4) return `rgba(40,170,80,${0.12 + t * 0.4})`;
-    if (t < 0.7) return `rgba(220,160,20,${0.18 + t * 0.45})`;
-    return `rgba(210,40,30,${0.22 + t * 0.5})`;
+    if (t < 0.4) return `rgba(98,167,91,${0.12 + t * 0.36})`;
+    if (t < 0.7) return `rgba(240,179,66,${0.17 + t * 0.38})`;
+    return `rgba(223,103,69,${0.22 + t * 0.42})`;
   },
   growth: (v) => {
     const t = v / 100;
-    if (t < 0.4) return `rgba(30,160,70,${0.12 + t * 0.4})`;
-    if (t < 0.7) return `rgba(180,110,20,${0.18 + t * 0.45})`;
-    return `rgba(200,50,30,${0.22 + t * 0.5})`;
+    if (t < 0.4) return `rgba(98,167,91,${0.12 + t * 0.36})`;
+    if (t < 0.7) return `rgba(221,143,67,${0.17 + t * 0.38})`;
+    return `rgba(223,103,69,${0.22 + t * 0.42})`;
   },
   blue_warn: (v) => {
     const t = v / 100;
-    if (t < 0.4) return `rgba(60,130,200,${0.1 + t * 0.35})`;
-    if (t < 0.7) return `rgba(180,100,20,${0.18 + t * 0.4})`;
-    return `rgba(200,40,40,${0.22 + t * 0.5})`;
+    if (t < 0.4) return `rgba(95,139,187,${0.1 + t * 0.32})`;
+    if (t < 0.7) return `rgba(221,143,67,${0.17 + t * 0.36})`;
+    return `rgba(203,79,64,${0.22 + t * 0.42})`;
   },
   harvest: (v) => {
     const t = v / 100;
-    if (t < 0.4) return `rgba(160,80,200,${0.08 + t * 0.3})`;
-    if (t < 0.7) return `rgba(200,140,20,${0.14 + t * 0.4})`;
-    return `rgba(220,60,20,${0.2 + t * 0.5})`;
+    if (t < 0.4) return `rgba(217,95,152,${0.08 + t * 0.28})`;
+    if (t < 0.7) return `rgba(240,179,66,${0.14 + t * 0.34})`;
+    return `rgba(223,103,69,${0.2 + t * 0.4})`;
   },
   crop_stage: (v) => {
     const stage = getHarvestStageInfo(v);
@@ -1273,6 +1483,12 @@ function normalizePestDetections(payload, sessionName = "-") {
 }
 
 const GROWTH_DETECTION_STAGES = {
+  flower: {
+    id: "flower",
+    labelEn: "Flower",
+    labelKr: "꽃",
+    severity: "low",
+  },
   raw: {
     id: "raw",
     labelEn: "Raw",
@@ -1295,10 +1511,19 @@ const GROWTH_DETECTION_STAGES = {
 
 function normalizeGrowthStage(value) {
   const text = String(value || "").trim().toLowerCase();
+  if (text === "flower" || text === "bloom" || text.includes("flower") || text.includes("꽃")) return "flower";
   if (text === "midi" || text === "mid-ripe" || text === "midripe" || text.includes("mid")) return "midi";
   if (text === "raw" || text === "unripe" || text.includes("unripe")) return "raw";
   if (text === "ripe" || text.includes("ripe")) return "ripe";
   return "raw";
+}
+
+function getMiniMapGrowthStageId(value) {
+  const stage = normalizeGrowthStage(value);
+  if (stage === "flower") return "flower";
+  if (stage === "midi") return "midripe";
+  if (stage === "ripe") return "ripe";
+  return "unripe";
 }
 
 function getGrowthDetectionStageInfo(value) {
@@ -1374,7 +1599,7 @@ function getHarvestStageInfo(value) {
     return {
       id: "flower",
       label: "꽃",
-      color: "#d96f9c",
+      color: "#d95f98",
       fillAlpha: 0.28,
       legendAlpha: 0.34,
       strokeAlpha: 0.42,
@@ -1384,7 +1609,7 @@ function getHarvestStageInfo(value) {
     return {
       id: "ripe",
       label: "익음",
-      color: "#d96844",
+      color: "#df6745",
       fillAlpha: 0.26,
       legendAlpha: 0.32,
       strokeAlpha: 0.4,
@@ -1394,7 +1619,7 @@ function getHarvestStageInfo(value) {
     return {
       id: "midripe",
       label: "덜익음",
-      color: "#efb44a",
+      color: "#f0b342",
       fillAlpha: 0.24,
       legendAlpha: 0.3,
       strokeAlpha: 0.36,
@@ -1404,7 +1629,7 @@ function getHarvestStageInfo(value) {
     return {
       id: "unripe",
       label: "안익음",
-      color: "#67a95c",
+      color: "#62a75b",
       fillAlpha: 0.22,
       legendAlpha: 0.28,
       strokeAlpha: 0.34,
@@ -1413,7 +1638,7 @@ function getHarvestStageInfo(value) {
   return {
     id: "flower",
     label: "꽃",
-    color: "#d96f9c",
+    color: "#d95f98",
     fillAlpha: 0.28,
     legendAlpha: 0.34,
     strokeAlpha: 0.42,
@@ -2003,12 +2228,14 @@ class TileMap {
     this.railTrackWorldBounds = this.computeRailTrackWorldBounds();
     this.pestDetections = normalizePestDetections(pestDetections, manifest.session_name);
     this.growthDetections = normalizeGrowthDetections(growthDetections, manifest.session_name);
+    this.railCropMix = this.computeRailCropMix();
     this.detectionOverlayRevision = 1;
     this.onSelect = onSelect;
     this.onViewChange = onViewChange;
     this.visibleTiles = new Map();
     this.visibleDetails = new Map();
     this.visibleAnnotations = new Map();
+    this.visibleRailRowLabels = new Map();
     this.visiblePestMarkers = new Map();
     this.prefetchedUrls = new Set();
     this.prefetchTimer = null;
@@ -2061,6 +2288,19 @@ class TileMap {
     currentGrowthDetections = this.growthDetections;
     this.detectionOverlayRevision += 1;
     this.queueRender();
+  }
+
+  computeRailCropMix() {
+    const mix = new Map();
+    for (const row of getRailCropRows(currentCropSummary)) {
+      mix.set(row.rail_name, {
+        flower: row.counts.flower,
+        unripe: row.counts.unripe,
+        midripe: row.counts.midripe,
+        ripe: row.counts.ripe,
+      });
+    }
+    return mix;
   }
 
   destroy() {
@@ -2123,10 +2363,12 @@ class TileMap {
     for (const tile of this.visibleTiles.values()) tile.remove();
     for (const detail of this.visibleDetails.values()) detail.remove();
     for (const ann of this.visibleAnnotations.values()) ann.remove();
+    for (const label of this.visibleRailRowLabels.values()) label.remove();
     for (const marker of this.visiblePestMarkers.values()) marker.remove();
     this.visibleTiles.clear();
     this.visibleDetails.clear();
     this.visibleAnnotations.clear();
+    this.visibleRailRowLabels.clear();
     this.visiblePestMarkers.clear();
   }
 
@@ -3147,10 +3389,55 @@ class TileMap {
     wrapper.dataset.frameId = String(frame.id);
     const railLabel = document.createElement("div");
     railLabel.className = "frame-annotation-label";
-    railLabel.textContent = formatFrameAnnotationLabel(frame);
+    railLabel.textContent = formatFrameDistanceLabel(frame);
     wrapper.appendChild(railLabel);
     this.annotationPane.appendChild(wrapper);
     return wrapper;
+  }
+
+  createRailRowLabel(rail) {
+    const label = document.createElement("div");
+    label.className = "map-rail-row-label";
+    label.dataset.railName = rail.name;
+    label.textContent = formatRailRowLabel(rail.name);
+    this.annotationPane.appendChild(label);
+    return label;
+  }
+
+  renderRailRowLabels(bounds) {
+    const layout = this.manifest.layout;
+    const rails = Array.isArray(this.manifest.rails) ? this.manifest.rails : [];
+    if (!layout || !rails.length) {
+      for (const label of this.visibleRailRowLabels.values()) label.remove();
+      this.visibleRailRowLabels.clear();
+      return;
+    }
+
+    const padding = 120 / this.baseScale;
+    const wanted = new Set();
+    for (const rail of rails) {
+      const railTop = layout.margin_y + rail.rail_y_m * layout.px_per_meter_y;
+      const railBottom = railTop + layout.cell_height;
+      if (railBottom < bounds.top - padding || railTop > bounds.bottom + padding) continue;
+      const topScreen = this.worldToScreen(this.centerX, railTop).y;
+      const bottomScreen = this.worldToScreen(this.centerX, railBottom).y;
+      if (bottomScreen < -90 || topScreen > this.viewportHeight + 90) continue;
+
+      wanted.add(rail.name);
+      let label = this.visibleRailRowLabels.get(rail.name);
+      if (!label) {
+        label = this.createRailRowLabel(rail);
+        this.visibleRailRowLabels.set(rail.name, label);
+      }
+      label.textContent = formatRailRowLabel(rail.name);
+      label.style.top = `${(topScreen + bottomScreen) / 2}px`;
+    }
+
+    for (const [railName, label] of this.visibleRailRowLabels.entries()) {
+      if (wanted.has(railName)) continue;
+      label.remove();
+      this.visibleRailRowLabels.delete(railName);
+    }
   }
 
   renderAnnotations(bounds) {
@@ -3376,9 +3663,14 @@ class TileMap {
     const mapW = this.manifest.image_width * tx.scaleX;
     const mapH = this.manifest.image_height * tx.scaleY;
     const layout = this.manifest.layout || {};
+    const mapRadius = clamp(Math.min(mapW, mapH) * 0.035, 8, 18);
 
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(tx.ox, tx.oy, mapW, mapH, mapRadius);
     ctx.fillStyle = "#171717";
-    ctx.fillRect(tx.ox, tx.oy, mapW, mapH);
+    ctx.fill();
+    ctx.clip();
 
     ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
     ctx.lineWidth = 1;
@@ -3408,15 +3700,8 @@ class TileMap {
       ctx.stroke();
     }
 
-    ctx.fillStyle = "rgba(69, 212, 106, 0.36)";
     for (const frame of this.frames) {
-      const r = frame.rect_px;
-      ctx.fillRect(
-        sx(r.left),
-        sy(r.top),
-        Math.max(1, (r.right - r.left) * tx.scaleX),
-        Math.max(1, (r.bottom - r.top) * tx.scaleY),
-      );
+      this.drawMiniMapFrameCell(ctx, tx, frame);
     }
 
     this.drawMiniMapLayerSegments(ctx, tx);
@@ -3448,9 +3733,70 @@ class TileMap {
       ctx.strokeRect(viewport.left + 3, viewport.top + 3, Math.max(1, viewport.width - 6), Math.max(1, viewport.height - 6));
     }
 
+    ctx.restore();
     ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
     ctx.lineWidth = 1;
-    ctx.strokeRect(tx.ox + 0.5, tx.oy + 0.5, mapW - 1, mapH - 1);
+    ctx.beginPath();
+    ctx.roundRect(tx.ox + 0.5, tx.oy + 0.5, mapW - 1, mapH - 1, mapRadius);
+    ctx.stroke();
+  }
+
+  getMiniMapGrowthStageCounts(frame) {
+    const counts = {
+      flower: 0,
+      unripe: 0,
+      midripe: 0,
+      ripe: 0,
+    };
+    const detections = getFrameDetections(this.growthDetections, frame.id);
+    for (const detection of detections) {
+      const stageId = getMiniMapGrowthStageId(detection.stage || detection.label);
+      counts[stageId] += 1;
+    }
+    const railMix = this.railCropMix.get(frame.rail_name);
+    const frameTotal = MINI_MAP_GROWTH_STAGE_ORDER.reduce((sum, stageId) => sum + counts[stageId], 0);
+    if (!frameTotal && railMix) return { ...railMix };
+    if (!counts.flower && railMix?.flower) {
+      const frameNonFlower = counts.unripe + counts.midripe + counts.ripe;
+      const railNonFlower = railMix.unripe + railMix.midripe + railMix.ripe;
+      counts.flower = frameNonFlower && railNonFlower
+        ? (frameNonFlower * railMix.flower) / railNonFlower
+        : railMix.flower;
+    }
+    return counts;
+  }
+
+  drawMiniMapFrameCell(ctx, tx, frame) {
+    const r = frame.rect_px;
+    const x = tx.ox + r.left * tx.scaleX;
+    const y = tx.oy + r.top * tx.scaleY;
+    const w = Math.max(1, (r.right - r.left) * tx.scaleX);
+    const h = Math.max(1, (r.bottom - r.top) * tx.scaleY);
+
+    if (!isGrowthStatusPhotoOverlayEnabled() || !this.growthDetections.available) {
+      ctx.fillStyle = "rgba(69, 212, 106, 0.36)";
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+
+    const counts = this.getMiniMapGrowthStageCounts(frame);
+    const total = MINI_MAP_GROWTH_STAGE_ORDER.reduce((sum, stageId) => sum + counts[stageId], 0);
+    if (!total) {
+      ctx.fillStyle = "rgba(69, 212, 106, 0.24)";
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+
+    let cursorY = y;
+    MINI_MAP_GROWTH_STAGE_ORDER.forEach((stageId, index) => {
+      const isLast = index === MINI_MAP_GROWTH_STAGE_ORDER.length - 1;
+      const rawH = h * (counts[stageId] / total);
+      const segmentH = isLast ? (y + h) - cursorY : rawH;
+      if (segmentH <= 0) return;
+      ctx.fillStyle = MINI_MAP_GROWTH_STAGE_COLORS[stageId];
+      ctx.fillRect(x, cursorY, w, segmentH);
+      cursorY += segmentH;
+    });
   }
 
   renderDetailFrames(bounds) {
@@ -3570,6 +3916,7 @@ class TileMap {
 
     this.renderDetailFrames(bounds);
     this.renderAnnotations(bounds);
+    this.renderRailRowLabels(bounds);
     this.renderPestMarkers();
     this.drawOverlay();
     this.drawMiniMap(bounds);
@@ -3647,7 +3994,7 @@ class TileMap {
 
     const guideWidth = Math.max(1, Math.round(strokeWidth * 0.25));
     const guideY = Math.round(centerY - guideWidth / 2);
-    ctx.fillStyle = "rgba(198, 208, 204, 0.42)";
+    ctx.fillStyle = "rgba(126, 118, 91, 0.22)";
     ctx.fillRect(0, guideY, width, guideWidth);
 
     const drawPath = (offsetX, offsetY) => {
@@ -3665,11 +4012,11 @@ class TileMap {
     };
 
     const shadowOffset = Math.max(1, strokeWidth * 0.18);
-    ctx.strokeStyle = "rgba(0, 0, 0, 0.62)";
+    ctx.strokeStyle = "rgba(86, 72, 50, 0.22)";
     ctx.lineWidth = strokeWidth;
     drawPath(shadowOffset, shadowOffset);
 
-    ctx.strokeStyle = "rgba(198, 208, 204, 0.96)";
+    ctx.strokeStyle = "rgba(214, 204, 173, 0.88)";
     ctx.lineWidth = strokeWidth;
     drawPath(0, 0);
     ctx.restore();
@@ -3706,8 +4053,8 @@ class TileMap {
 
     const topY = snapLine(sortedTracks[0].centerY, solidWidth);
     const bottomY = snapLine(sortedTracks[sortedTracks.length - 1].centerY, solidWidth);
-    const railColor = "rgba(198, 208, 204, 0.82)";
-    const shadowColor = "rgba(0, 0, 0, 0.64)";
+    const railColor = "rgba(196, 184, 151, 0.78)";
+    const shadowColor = "rgba(86, 72, 50, 0.22)";
 
     ctx.save();
     ctx.setLineDash([]);
@@ -3758,7 +4105,7 @@ class TileMap {
     rectV({ x: solidX, y0: topY, y1: bottomY, widthPx: solidWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
     rectV({ x: solidX, y0: topY, y1: bottomY, widthPx: solidWidth, color: railColor });
     dashedV({ x: dashedX, y0: topY, y1: bottomY, widthPx: dashWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
-    dashedV({ x: dashedX, y0: topY, y1: bottomY, widthPx: dashWidth, color: "rgba(198, 208, 204, 0.62)" });
+    dashedV({ x: dashedX, y0: topY, y1: bottomY, widthPx: dashWidth, color: "rgba(196, 184, 151, 0.48)" });
 
     for (const track of visibleTracks) {
       const centerSolidY = snapLine(track.centerY, solidWidth);
@@ -3767,9 +4114,9 @@ class TileMap {
       rectH({ x0: solidX, x1: branchEndX, y: centerSolidY, widthPx: solidWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
       rectH({ x0: solidX, x1: branchEndX, y: centerSolidY, widthPx: solidWidth, color: railColor });
       dashedH({ x0: dashedX, x1: branchEndX, y: centerDashedY, widthPx: dashWidth + 1, color: shadowColor, offsetX: shadowOffset, offsetY: shadowOffset });
-      dashedH({ x0: dashedX, x1: branchEndX, y: centerDashedY, widthPx: dashWidth, color: "rgba(198, 208, 204, 0.66)" });
+      dashedH({ x0: dashedX, x1: branchEndX, y: centerDashedY, widthPx: dashWidth, color: "rgba(196, 184, 151, 0.52)" });
 
-      ctx.fillStyle = "rgba(198, 208, 204, 0.9)";
+      ctx.fillStyle = "rgba(184, 173, 141, 0.78)";
       const nodeR = clamp(Math.round(solidWidth * 1.2), 2, 4);
       ctx.beginPath();
       ctx.roundRect(solidX - nodeR, centerSolidY - nodeR, nodeR * 2, nodeR * 2, 1.5);
@@ -3850,12 +4197,9 @@ class TileMap {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const scale = this.baseScale;
     const rails = this.manifest.rails;
 
-    this.drawRailTrackOverlay(ctx, width, height);
-
-    // ── Rail separators + risk highlight ──────────────────────────────────────
+    // ── Rail risk highlight ───────────────────────────────────────────────────
     for (const rail of rails) {
       const ri = this._getRailInsight(rail.name);
       const y = this.manifest.layout.margin_y + rail.rail_y_m * this.manifest.layout.px_per_meter_y + this.manifest.layout.cell_height / 2;
@@ -3888,29 +4232,6 @@ class TileMap {
           ctx.fillRect(0, railScreenTop, width, railScreenBottom - railScreenTop);
         }
       }
-
-      ctx.strokeStyle = "rgba(20, 63, 49, 0.18)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, screen.y);
-      ctx.lineTo(width, screen.y);
-      ctx.stroke();
-      // Rail name pill — always visible regardless of zoom
-      const railLabel = rail.name.replace("rail_", "R");
-      ctx.font = 'bold 11px "DM Mono", "Noto Sans KR", sans-serif';
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const rlW = ctx.measureText(railLabel).width + 12;
-      const rlH = 17;
-      const rlY = clamp(screen.y, rlH / 2 + 4, height - rlH / 2 - 4);
-      ctx.fillStyle = "rgba(11, 15, 13, 0.88)";
-      ctx.beginPath();
-      ctx.roundRect(6, rlY - rlH / 2, rlW, rlH, 4);
-      ctx.fill();
-      ctx.fillStyle = "#45d46a";
-      ctx.fillText(railLabel, 6 + rlW / 2, rlY);
-      ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
     }
 
     // ── Frame-level alert dots ────────────────────────────────────────────────
@@ -3942,7 +4263,7 @@ class TileMap {
     const tickStep = chooseTickStep(screenPxPerMeter);
     const firstMeter = Math.floor(this.manifest.world.odom_x_min / tickStep) * tickStep;
     const lastMeter = this.manifest.world.odom_x_max + tickStep;
-    ctx.strokeStyle = "rgba(39, 48, 41, 0.4)";
+    ctx.strokeStyle = "rgba(166, 158, 138, 0.26)";
     ctx.lineWidth = 1;
     ctx.font = 'bold 11px "DM Mono", monospace';
     ctx.textAlign = "center";
@@ -3956,15 +4277,10 @@ class TileMap {
       ctx.lineTo(screen.x, height);
       ctx.stroke();
       const mLabel = `${meter.toFixed(1)}m`;
-      const mW = ctx.measureText(mLabel).width + 10;
-      const mH = 16;
+      const mW = ctx.measureText(mLabel).width + 8;
       const mX = clamp(screen.x, mW / 2 + 4, width - mW / 2 - 4);
-      ctx.fillStyle = "rgba(11, 15, 13, 0.85)";
-      ctx.beginPath();
-      ctx.roundRect(mX - mW / 2, 6, mW, mH, 3);
-      ctx.fill();
-      ctx.fillStyle = "#7d9889";
-      ctx.fillText(mLabel, mX, 6 + mH / 2);
+      ctx.fillStyle = "rgba(108, 108, 98, 0.78)";
+      ctx.fillText(mLabel, mX, 14);
     }
     ctx.textBaseline = "alphabetic";
 
@@ -3972,6 +4288,8 @@ class TileMap {
     if (showLayerOverlay) {
       this.drawLayerSegments(ctx, width, height);
     }
+
+    this.drawFrameCardChrome(ctx, width, height);
 
     // ── Selection highlight ───────────────────────────────────────────────────
     if (this.selectedFrameId != null) {
@@ -3981,15 +4299,71 @@ class TileMap {
         const topLeft = this.worldToScreen(rect.left, rect.top);
         const screenW = rect.width * this.scaleX;
         const screenH = rect.height * this.scaleY;
-        ctx.strokeStyle = "#ff5b2e";
+        const radius = clamp(Math.min(screenW, screenH) * 0.035, 5, 10);
+        ctx.strokeStyle = "#5f8d55";
         ctx.lineWidth = 3;
-        ctx.strokeRect(topLeft.x, topLeft.y, screenW, screenH);
-        ctx.fillStyle = "#ff5b2e";
         ctx.beginPath();
-        ctx.arc(topLeft.x + screenW / 2, topLeft.y + screenH / 2, 5, 0, Math.PI * 2);
+        ctx.roundRect(topLeft.x + 1.5, topLeft.y + 1.5, Math.max(0, screenW - 3), Math.max(0, screenH - 3), radius);
+        ctx.stroke();
+        const badgeR = clamp(Math.min(screenW, screenH) * 0.09, 9, 18);
+        const badgeX = topLeft.x + screenW - badgeR * 0.85;
+        const badgeY = topLeft.y + badgeR * 0.85;
+        ctx.fillStyle = "#fbfaf5";
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, badgeR + 3, 0, Math.PI * 2);
         ctx.fill();
+        ctx.fillStyle = "#5f8d55";
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fffefa";
+        ctx.lineWidth = Math.max(2, badgeR * 0.22);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(badgeX - badgeR * 0.38, badgeY - badgeR * 0.02);
+        ctx.lineTo(badgeX - badgeR * 0.1, badgeY + badgeR * 0.28);
+        ctx.lineTo(badgeX + badgeR * 0.42, badgeY - badgeR * 0.34);
+        ctx.stroke();
       }
     }
+  }
+
+  drawFrameCardChrome(ctx, width, height) {
+    const background = "#f4f1e8";
+    const border = "#fbfaf5";
+    ctx.save();
+    for (const frame of this.frames) {
+      const rect = frame.rect_px;
+      const topLeft = this.worldToScreen(rect.left, rect.top);
+      const screenW = rect.width * this.scaleX;
+      const screenH = rect.height * this.scaleY;
+      if (topLeft.x + screenW < -8 || topLeft.x > width + 8) continue;
+      if (topLeft.y + screenH < -8 || topLeft.y > height + 8) continue;
+      if (screenW < 12 || screenH < 10) continue;
+
+      const radius = clamp(Math.min(screenW, screenH) * 0.06, 8, 12);
+      const borderWidth = clamp(Math.min(screenW, screenH) * 0.018, 1, 3);
+      const bleed = Math.max(4, borderWidth + 2);
+      ctx.fillStyle = background;
+      ctx.beginPath();
+      ctx.rect(topLeft.x - bleed, topLeft.y - bleed, screenW + bleed * 2, screenH + bleed * 2);
+      ctx.roundRect(topLeft.x, topLeft.y, screenW, screenH, radius);
+      ctx.fill("evenodd");
+
+      ctx.strokeStyle = border;
+      ctx.lineWidth = borderWidth;
+      ctx.beginPath();
+      ctx.roundRect(
+        topLeft.x + borderWidth / 2,
+        topLeft.y + borderWidth / 2,
+        Math.max(0, screenW - borderWidth),
+        Math.max(0, screenH - borderWidth),
+        radius,
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   drawLayerSegments(ctx, width, height) {
@@ -4076,7 +4450,7 @@ class TileMap {
     if (!layers.length) return;
 
     const pestRiskLayers = layers.filter((layer) => layer.id === "disease_pest_risk");
-    const segmentLayers = layers.filter((layer) => layer.id !== "disease_pest_risk");
+    const segmentLayers = layers.filter((layer) => !["disease_pest_risk", "growth_status"].includes(layer.id));
     const layout = this.manifest.layout || {};
     const world = this.manifest.world || {};
     const railMap = new Map((this.manifest.rails || []).map((rail) => [rail.name, rail]));
@@ -5754,7 +6128,6 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     mapSessionChip.textContent = `${t("common.aiAnalysis")} · ${sessionName}`;
   }
   renderCropPanel(currentCropSummary);
-  renderMapStatisticsPanel(currentCropSummary);
 
   if (currentMap) {
     currentMap.destroy();
@@ -5802,6 +6175,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
     },
   });
   currentMap = map;
+  renderMapStatisticsPanel(currentCropSummary);
 
   renderAlertPanel(insights, map);
   renderLayersPanel(layers);
