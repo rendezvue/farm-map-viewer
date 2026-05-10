@@ -2609,15 +2609,17 @@ class TileMap {
 
   getMiniMapTransform(width, height) {
     const pad = 10;
-    const scale = Math.min(
-      (width - pad * 2) / this.manifest.image_width,
-      (height - pad * 2) / this.manifest.image_height,
-    );
-    if (!Number.isFinite(scale) || scale <= 0) return null;
+    const innerWidth = Math.max(1, width - pad * 2);
+    const innerHeight = Math.max(1, height - pad * 2);
+    const scaleX = innerWidth / this.manifest.image_width;
+    const scaleY = innerHeight / this.manifest.image_height;
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return null;
     return {
-      scale,
-      ox: (width - this.manifest.image_width * scale) / 2,
-      oy: (height - this.manifest.image_height * scale) / 2,
+      scale: Math.min(scaleX, scaleY),
+      scaleX,
+      scaleY,
+      ox: pad,
+      oy: pad,
     };
   }
 
@@ -2625,20 +2627,20 @@ class TileMap {
     const tx = this.getMiniMapTransform(width, height);
     if (!tx) return null;
     return {
-      x: clamp((x - tx.ox) / tx.scale, 0, this.manifest.image_width),
-      y: clamp((y - tx.oy) / tx.scale, 0, this.manifest.image_height),
+      x: clamp((x - tx.ox) / tx.scaleX, 0, this.manifest.image_width),
+      y: clamp((y - tx.oy) / tx.scaleY, 0, this.manifest.image_height),
     };
   }
 
   getMiniMapViewportRect(width, height, bounds = this.getViewBounds()) {
     const tx = this.getMiniMapTransform(width, height);
     if (!tx) return null;
-    const mapW = this.manifest.image_width * tx.scale;
-    const mapH = this.manifest.image_height * tx.scale;
-    const centerX = tx.ox + clamp(this.centerX, 0, this.manifest.image_width) * tx.scale;
-    const centerY = tx.oy + clamp(this.centerY, 0, this.manifest.image_height) * tx.scale;
-    const actualWidth = Math.max(3, (bounds.right - bounds.left) * tx.scale);
-    const actualHeight = Math.max(3, (bounds.bottom - bounds.top) * tx.scale);
+    const mapW = this.manifest.image_width * tx.scaleX;
+    const mapH = this.manifest.image_height * tx.scaleY;
+    const centerX = tx.ox + clamp(this.centerX, 0, this.manifest.image_width) * tx.scaleX;
+    const centerY = tx.oy + clamp(this.centerY, 0, this.manifest.image_height) * tx.scaleY;
+    const actualWidth = Math.max(3, (bounds.right - bounds.left) * tx.scaleX);
+    const actualHeight = Math.max(3, (bounds.bottom - bounds.top) * tx.scaleY);
     const visualWidth = clamp(actualWidth, 12, Math.max(24, mapW * 0.34));
     const visualHeight = clamp(actualHeight, 10, Math.max(18, mapH * 0.34));
     const left = centerX - visualWidth / 2;
@@ -3137,10 +3139,10 @@ class TileMap {
 
     const tx = this.getMiniMapTransform(width, height);
     if (!tx) return;
-    const sx = (x) => tx.ox + x * tx.scale;
-    const sy = (y) => tx.oy + y * tx.scale;
-    const mapW = this.manifest.image_width * tx.scale;
-    const mapH = this.manifest.image_height * tx.scale;
+    const sx = (x) => tx.ox + x * tx.scaleX;
+    const sy = (y) => tx.oy + y * tx.scaleY;
+    const mapW = this.manifest.image_width * tx.scaleX;
+    const mapH = this.manifest.image_height * tx.scaleY;
     const layout = this.manifest.layout || {};
 
     ctx.fillStyle = "#171717";
@@ -3180,8 +3182,8 @@ class TileMap {
       ctx.fillRect(
         sx(r.left),
         sy(r.top),
-        Math.max(1, (r.right - r.left) * tx.scale),
-        Math.max(1, (r.bottom - r.top) * tx.scale),
+        Math.max(1, (r.right - r.left) * tx.scaleX),
+        Math.max(1, (r.bottom - r.top) * tx.scaleY),
       );
     }
 
@@ -3196,8 +3198,8 @@ class TileMap {
         ctx.strokeRect(
           sx(r.left),
           sy(r.top),
-          Math.max(3, (r.right - r.left) * tx.scale),
-          Math.max(3, (r.bottom - r.top) * tx.scale),
+          Math.max(3, (r.right - r.left) * tx.scaleX),
+          Math.max(3, (r.bottom - r.top) * tx.scaleY),
         );
       }
     }
@@ -3854,8 +3856,8 @@ class TileMap {
     const odomMin = Number(world.odom_x_min) || 0;
     if (!pxPerMeterX || !pxPerMeterY || !cellHeight) return;
 
-    const sx = (x) => tx.ox + x * tx.scale;
-    const sy = (y) => tx.oy + y * tx.scale;
+    const sx = (x) => tx.ox + x * tx.scaleX;
+    const sy = (y) => tx.oy + y * tx.scaleY;
     const laneCount = Math.max(1, segmentLayers.length);
 
     segmentLayers.forEach((layer, layerIndex) => {
@@ -3874,8 +3876,8 @@ class TileMap {
         const segRight = marginX + (Math.max(start, end) - odomMin) * pxPerMeterX;
         const x = sx(segLeft);
         const y = sy(laneTop);
-        const w = Math.max(1, (segRight - segLeft) * tx.scale);
-        const h = Math.max(1, (laneBottom - laneTop) * tx.scale);
+        const w = Math.max(1, (segRight - segLeft) * tx.scaleX);
+        const h = Math.max(1, (laneBottom - laneTop) * tx.scaleY);
 
         ctx.fillStyle = colorFn(Number(item.value) || 0);
         ctx.fillRect(x, y, w, h);
@@ -3915,10 +3917,10 @@ class TileMap {
 
     for (const marker of markers.values()) {
       const r = marker.frame.rect_px;
-      const x = tx.ox + r.left * tx.scale;
-      const y = tx.oy + r.top * tx.scale;
-      const w = Math.max(2, (r.right - r.left) * tx.scale);
-      const h = Math.max(2, (r.bottom - r.top) * tx.scale);
+      const x = tx.ox + r.left * tx.scaleX;
+      const y = tx.oy + r.top * tx.scaleY;
+      const w = Math.max(2, (r.right - r.left) * tx.scaleX);
+      const h = Math.max(2, (r.bottom - r.top) * tx.scaleY);
       ctx.fillStyle = miniMapRiskColor(marker.severity, marker.value);
       ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.42)";
