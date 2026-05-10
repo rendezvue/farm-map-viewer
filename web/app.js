@@ -268,8 +268,10 @@ function applyLanguage({ rerender = true } = {}) {
       code.classList.toggle("is-active", code.dataset.langCode === currentLanguage);
     }
   }
-  for (const label of document.querySelectorAll(".frame-camera-label[data-camera-name]")) {
-    label.textContent = getCameraLabel(label.dataset.cameraName) || label.dataset.cameraName;
+  for (const annotation of document.querySelectorAll(".frame-annotation[data-frame-id]")) {
+    const label = annotation.querySelector(".frame-annotation-label");
+    const frame = currentMap?.framesById?.get(annotation.dataset.frameId);
+    if (label && frame) label.textContent = formatFrameAnnotationLabel(frame);
   }
   for (const chip of document.querySelectorAll(".session-chip[data-rail-count][data-frame-count]")) {
     const meta = chip.querySelector(".session-chip-meta");
@@ -311,6 +313,18 @@ function getCameraLabel(cameraName) {
   return UI_TEXT[currentLanguage]?.[`camera.${cameraName}`] || UI_TEXT.en[`camera.${cameraName}`] || CAMERA_LABELS[cameraName] || cameraName;
 }
 
+function formatFrameAnnotationLabel(frame) {
+  const railNumber = Number(frame?.rail_number);
+  const railLabel = Number.isFinite(railNumber) && railNumber > 0
+    ? String(Math.round(railNumber)).padStart(3, "0")
+    : String(frame?.rail_name || "-").replace(/^rail[_-]?/i, "").padStart(3, "0");
+  const distance = Number(frame?.odom_x);
+  const distanceLabel = Number.isFinite(distance) ? `${distance.toFixed(1)}m` : "-";
+  return currentLanguage === "kr"
+    ? `레일 ${railLabel} · ${distanceLabel}`
+    : `Rail ${railLabel} · ${distanceLabel}`;
+}
+
 function updateDatasetSummaryLanguage() {
   const summary = document.getElementById("datasetSummary");
   if (!summary) return;
@@ -338,6 +352,10 @@ function formatCaptureDateLabel(sessionName) {
 
 function getLatestSession(sessions = []) {
   return [...sessions].sort((a, b) => b.name.localeCompare(a.name))[0] || null;
+}
+
+function getDefaultSession(sessions = []) {
+  return sessions.find((session) => session.name === DEFAULT_SESSION_NAME) || getLatestSession(sessions);
 }
 
 function syncHostSelectors(deviceName) {
@@ -822,7 +840,9 @@ let activeLayerId = null;          // which layer is rendered on map
 let showLayerOverlay = false;      // overlay on/off
 let activeMiniMapLayerIds = new Set();
 let currentGrowthDetectionModels = [];
-let activeGrowthDetectionModelId = "yolo11s";
+const DEFAULT_SESSION_NAME = "20260507_130000";
+const DEFAULT_GROWTH_DETECTION_MODEL_ID = "yolo11l";
+let activeGrowthDetectionModelId = DEFAULT_GROWTH_DETECTION_MODEL_ID;
 let hoveredSegmentId = null;
 let selectedSegmentId = null;
 let selectedPestDetectionId = null;
@@ -1124,8 +1144,11 @@ function normalizeGrowthDetectionModels(payload) {
 
 function chooseGrowthDetectionModel(models, preferred = activeGrowthDetectionModelId) {
   if (models.some((model) => model.id === preferred && model.available)) return preferred;
+  if (models.some((model) => model.id === DEFAULT_GROWTH_DETECTION_MODEL_ID && model.available)) {
+    return DEFAULT_GROWTH_DETECTION_MODEL_ID;
+  }
   if (models.some((model) => model.id === "yolo11s" && model.available)) return "yolo11s";
-  return models.find((model) => model.available)?.id || models[0]?.id || "yolo11s";
+  return models.find((model) => model.available)?.id || models[0]?.id || DEFAULT_GROWTH_DETECTION_MODEL_ID;
 }
 
 function getHarvestStageInfo(value) {
@@ -2907,16 +2930,8 @@ class TileMap {
     wrapper.dataset.frameId = String(frame.id);
     const railLabel = document.createElement("div");
     railLabel.className = "frame-annotation-label";
-    railLabel.textContent = frame.rail_name;
+    railLabel.textContent = formatFrameAnnotationLabel(frame);
     wrapper.appendChild(railLabel);
-    const cameraNames = isSingleCameraFrame(frame) ? getFrameCameraNames(frame) : CAMERA_ORDER;
-    for (const cameraName of cameraNames) {
-      const label = document.createElement("div");
-      label.className = `frame-camera-label ${CAMERA_LABEL_CORNERS[cameraName] || "is-top-left"}`;
-      label.dataset.cameraName = cameraName;
-      label.textContent = getCameraLabel(cameraName) || cameraName;
-      wrapper.appendChild(label);
-    }
     this.annotationPane.appendChild(wrapper);
     return wrapper;
   }
@@ -5474,7 +5489,7 @@ async function loadSession(deviceName, sessionName, loadToken = currentSessionLo
   currentGrowthDetectionModels = normalizeGrowthDetectionModels(growthModelPayload);
   activeGrowthDetectionModelId = chooseGrowthDetectionModel(
     currentGrowthDetectionModels,
-    growthModelPayload?.default_model || activeGrowthDetectionModelId,
+    activeGrowthDetectionModelId || growthModelPayload?.default_model,
   );
 
   let growthDetections = null;
@@ -5679,7 +5694,10 @@ async function bootstrap() {
     return;
   }
 
-  let activeDevice = devicesData[0].name;
+  const defaultDevice = devicesData.find((device) =>
+    device.sessions?.some((session) => session.name === DEFAULT_SESSION_NAME),
+  ) || devicesData[0];
+  let activeDevice = defaultDevice.name;
   activeDeviceName = activeDevice;
   let activeSessionBtn = null;
 
@@ -5692,10 +5710,10 @@ async function bootstrap() {
     renderSessionList(device.sessions, deviceName, selectSession);
     if (activeSessionBtn) activeSessionBtn.classList.remove("is-active");
     activeSessionBtn = null;
-    const latestSession = getLatestSession(device.sessions);
-    if (latestSession) syncCaptureDateSelectors(latestSession.name);
-    if (autoLoad && latestSession) {
-      void selectSession(deviceName, latestSession.name);
+    const defaultSession = getDefaultSession(device.sessions);
+    if (defaultSession) syncCaptureDateSelectors(defaultSession.name);
+    if (autoLoad && defaultSession) {
+      void selectSession(deviceName, defaultSession.name);
     }
   }
 
@@ -5711,7 +5729,7 @@ async function bootstrap() {
     currentPestDetections = normalizePestDetections(null, sessionName);
     currentGrowthDetections = normalizeGrowthDetections(null, sessionName);
     currentGrowthDetectionModels = [];
-    activeGrowthDetectionModelId = "yolo11s";
+    activeGrowthDetectionModelId = DEFAULT_GROWTH_DETECTION_MODEL_ID;
     selectedPestDetectionId = null;
     renderCropPanel(currentCropSummary);
     summary.dataset.summaryState = "loading";
@@ -5729,9 +5747,9 @@ async function bootstrap() {
   renderDeviceTabs(devicesData, selectDevice);
   selectDevice(activeDevice);
 
-  const firstDevice = devicesData[0];
+  const firstDevice = defaultDevice;
   if (firstDevice.sessions.length > 0 && currentSessionLoadToken === 0) {
-    const firstSession = getLatestSession(firstDevice.sessions);
+    const firstSession = getDefaultSession(firstDevice.sessions);
     if (firstSession) await selectSession(firstDevice.name, firstSession.name);
   }
 

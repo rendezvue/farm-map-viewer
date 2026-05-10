@@ -14,6 +14,7 @@ MODEL_LABELS = {
     "yolo11l": "YOLO11l",
     "yolo11x": "YOLO11x",
 }
+DEFAULT_MODEL_ID = "yolo11l"
 
 
 def normalize_model_id(value: Any) -> str | None:
@@ -95,7 +96,9 @@ def list_object_detection_models(config: BuildConfig, *, kind: str = "growth") -
             }
         )
     default_path = next((candidate for candidate in _candidate_paths(config, kind) if candidate.exists()), None)
-    default_model = "yolo11s" if any(model["id"] == "yolo11s" and model["available"] for model in models) else None
+    default_model = DEFAULT_MODEL_ID if any(model["id"] == DEFAULT_MODEL_ID and model["available"] for model in models) else None
+    if default_model is None and any(model["id"] == "yolo11s" and model["available"] for model in models):
+        default_model = "yolo11s"
     if default_model is None:
         default_model = next((model["id"] for model in models if model["available"]), None)
     return {
