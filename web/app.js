@@ -193,7 +193,7 @@ const UI_TEXT = {
     "map.panLeft": "왼쪽 이동",
     "map.panRight": "오른쪽 이동",
     "mapLayer.disease_pest_risk": "병충해 위험",
-    "mapLayer.growth_status": "검출결과",
+    "mapLayer.growth_status": "검출 결과",
     "growthModel.none": "검출 없음",
     "growthModel.selectAria": "생육 검출 모델",
     "case.confidence": "신뢰도",
@@ -289,6 +289,7 @@ function applyLanguage({ rerender = true } = {}) {
     }
   }
   updateDatasetSummaryLanguage();
+  refreshHostSelectLabels();
   if (!rerender) return;
   renderCropPanel(currentCropSummary);
   if (currentLayersData) renderMapLayerControls(currentLayersData);
@@ -350,8 +351,27 @@ function updateDatasetSummaryLanguage() {
 function formatCaptureDateLabel(sessionName) {
   const match = /^(\d{4})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})?$/.exec(sessionName || "");
   if (!match) return sessionName || "-";
-  const [, year, month, day, hour, minute, second = "00"] = match;
-  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  const [, year, month, day, hour, minute] = match;
+  return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function formatDeviceDisplayLabel(deviceName) {
+  const raw = String(deviceName || "").trim();
+  const normalized = raw.replace(/_host$/i, "");
+  if (normalized.toLowerCase() === "tomato_tokuiten") {
+    return currentLanguage === "kr" ? "토마토 · 도구이텐" : "Tomato · Tokuiten";
+  }
+  const labelParts = normalized
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+  return labelParts.length ? labelParts.join(" · ") : raw || "-";
+}
+
+function refreshHostSelectLabels() {
+  for (const option of document.querySelectorAll("[data-session-host-select] option")) {
+    option.textContent = formatDeviceDisplayLabel(option.value);
+  }
 }
 
 function getLatestSession(sessions = []) {
@@ -4660,11 +4680,12 @@ function renderMapLayerControls(layers) {
   const options = selector.querySelector(".map-layer-options");
 
   for (const layer of controlLayers) {
+    const isGrowthLayer = layer.id === "growth_status";
     const label = document.createElement("label");
-    label.className = "map-layer-option";
+    label.className = `map-layer-option ${isGrowthLayer ? "map-layer-option-growth" : "map-layer-option-toggle"}`;
     label.dataset.layerId = layer.id;
     label.title = layer.description || layer.label;
-    if (layer.id === "growth_status") {
+    if (isGrowthLayer) {
       label.classList.add("has-model-select");
     }
 
@@ -4673,14 +4694,14 @@ function renderMapLayerControls(layers) {
     checkbox.name = "map-layer";
     checkbox.value = layer.id;
 
-    const indicator = document.createElement("span");
-    indicator.className = "map-layer-swatch";
-    indicator.dataset.scheme = layer.color_scheme;
+    const icon = document.createElement("span");
+    icon.className = `left-filter-icon ${isGrowthLayer ? "left-filter-icon-search" : "left-filter-icon-check"}`;
+    icon.setAttribute("aria-hidden", "true");
 
     const text = createElement("span", "map-layer-name", t(`mapLayer.${layer.id}`) || layer.label);
 
-    label.append(checkbox, indicator, text);
-    if (layer.id === "growth_status") {
+    label.append(checkbox, icon, text);
+    if (isGrowthLayer) {
       const modelSelect = document.createElement("select");
       modelSelect.className = "growth-model-select";
       modelSelect.setAttribute("aria-label", t("growthModel.selectAria"));
@@ -4688,7 +4709,7 @@ function renderMapLayerControls(layers) {
     }
     label.addEventListener("click", (event) => event.stopPropagation());
     checkbox.addEventListener("change", () => {
-      if (layer.id !== "growth_status") {
+      if (!isGrowthLayer) {
         setMiniMapLayerVisible(layer.id, checkbox.checked);
         return;
       }
@@ -5647,7 +5668,8 @@ function renderDeviceTabs(devicesData, onSelect) {
     for (const device of devicesData) {
       const opt = document.createElement("option");
       opt.value = device.name;
-      opt.textContent = device.name;
+      opt.textContent = formatDeviceDisplayLabel(device.name);
+      opt.title = device.name;
       select.appendChild(opt);
     }
     select.onchange = () => onSelect(select.value, { autoLoad: true });

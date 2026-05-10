@@ -105,12 +105,14 @@
             <div class="map-minimap-layer">
               <div class="case-summary-panel">
                 <div class="session-switcher" id="sessionSwitcher" data-i18n-aria="session.selectorAria" aria-label="Session selection">
-                  <label class="session-switch-field">
-                    <span data-i18n="session.host">Host</span>
+                  <label class="session-switch-field session-switch-field-host">
+                    <span class="left-filter-icon left-filter-icon-leaf" aria-hidden="true"></span>
+                    <span class="session-switch-label" data-i18n="session.host">Host</span>
                     <select id="hostSelect" class="session-select" data-session-host-select data-i18n-aria="session.host" aria-label="Host"></select>
                   </label>
                   <label class="session-switch-field session-switch-field-date">
-                    <span data-i18n="session.captureDate">Capture date</span>
+                    <span class="left-filter-icon left-filter-icon-calendar" aria-hidden="true"></span>
+                    <span class="session-switch-label" data-i18n="session.captureDate">Capture date</span>
                     <select id="captureDateSelect" class="session-select" data-session-date-select data-i18n-aria="session.captureDate" aria-label="Capture date"></select>
                   </label>
                 </div>

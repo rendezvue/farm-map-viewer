@@ -5463,3 +5463,291 @@ body.modal-open { overflow: hidden; }
 .tl-play:hover { opacity: 0.85; }
 
 body.modal-open { overflow: hidden; }
+
+
+/* Capture-style left layer controls */
+.map-minimap-layer .case-summary-panel {
+  gap: 8px;
+}
+
+.map-minimap-layer .session-switcher,
+.map-minimap-layer .map-layer-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.map-minimap-layer .session-switch-field,
+.map-minimap-layer .map-layer-option {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  border: 1px solid #dededc;
+  border-radius: 8px;
+  background: #fffefe;
+  color: #242520;
+  box-shadow:
+    0 1px 1px rgba(42, 43, 38, 0.04),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.015);
+}
+
+.map-minimap-layer .session-switch-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 32px 0 12px;
+}
+
+.session-switch-field::before {
+  content: none;
+}
+
+.map-minimap-layer .session-switch-field::after,
+.map-minimap-layer .map-layer-option-toggle::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid #2f302c;
+  border-bottom: 2px solid #2f302c;
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+.map-minimap-layer .session-switch-field:focus-within,
+.map-minimap-layer .map-layer-option:focus-within {
+  border-color: #b9c8b2;
+  box-shadow: 0 0 0 3px rgba(95, 141, 85, 0.12);
+}
+
+.map-minimap-layer .session-switch-field .session-switch-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.map-minimap-layer .session-switch-field .left-filter-icon,
+.map-minimap-layer .map-layer-option .left-filter-icon {
+  display: inline-block;
+}
+
+.map-minimap-layer .session-select {
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  appearance: none;
+  background: transparent;
+  color: #242520;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 32px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+}
+
+.map-minimap-layer .map-layer-selector {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.map-minimap-layer .map-layer-option {
+  display: grid;
+  align-items: center;
+  gap: 9px;
+  padding: 0 32px 0 12px;
+  cursor: pointer;
+}
+
+.map-minimap-layer .map-layer-option-toggle {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+.map-minimap-layer .map-layer-option-growth,
+.map-minimap-layer .map-layer-option[data-layer-id="growth_status"] {
+  grid-template-columns: 20px minmax(58px, 0.72fr) minmax(82px, 1fr);
+  gap: 8px;
+  padding: 0 8px 0 10px;
+}
+
+.map-minimap-layer .map-layer-option.is-active {
+  border-color: #dededc;
+  background: #fffefe;
+}
+
+.map-minimap-layer .map-layer-option input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.map-minimap-layer .map-layer-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #242520;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-minimap-layer .growth-model-select {
+  min-width: 0;
+  width: 100%;
+  height: 24px;
+  padding: 0 24px 0 10px;
+  border: 1px solid #dededc;
+  border-radius: 6px;
+  outline: 0;
+  appearance: none;
+  background-color: #fffefe;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #2f302c 50%),
+    linear-gradient(135deg, #2f302c 50%, transparent 50%);
+  background-position:
+    calc(100% - 13px) calc(50% - 2px),
+    calc(100% - 9px) calc(50% - 2px);
+  background-repeat: no-repeat;
+  background-size: 5px 5px;
+  color: #242520;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.map-minimap-layer .growth-model-select:focus {
+  border-color: #b9c8b2;
+  box-shadow: none;
+}
+
+.left-filter-icon {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  color: #4e9447;
+}
+
+.left-filter-icon-leaf::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  width: 16px;
+  height: 11px;
+  border-radius: 100% 0 100% 0;
+  background: #4e9447;
+  transform: rotate(-20deg);
+}
+
+.left-filter-icon-leaf::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 13px;
+  width: 10px;
+  height: 2px;
+  border-radius: 99px;
+  background: #4e9447;
+  transform: rotate(-28deg);
+  opacity: 0.78;
+}
+
+.left-filter-icon-calendar {
+  width: 18px;
+  height: 18px;
+  margin: 1px;
+  border: 2px solid #242520;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.left-filter-icon-calendar::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 4px;
+  height: 2px;
+  background: #242520;
+}
+
+.left-filter-icon-calendar::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #242520;
+  box-shadow: 4px 0 0 #242520, 8px 0 0 #242520, 0 4px 0 #242520, 4px 4px 0 #242520;
+}
+
+.left-filter-icon-check {
+  border-radius: 50%;
+  background: #a9b7a3;
+}
+
+.map-layer-option.is-active .left-filter-icon-check {
+  background: #4e9447;
+}
+
+.left-filter-icon-check::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 4px;
+  width: 5px;
+  height: 9px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(45deg);
+}
+
+.left-filter-icon-search::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 11px;
+  height: 11px;
+  border: 3px solid #4e9447;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.left-filter-icon-search::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  width: 8px;
+  height: 3px;
+  border-radius: 99px;
+  background: #4e9447;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
+@media (max-width: 720px) {
+  .map-minimap-layer .session-switcher,
+  .map-minimap-layer .map-layer-options {
+    grid-template-columns: 1fr;
+  }
+}
