@@ -4934,6 +4934,57 @@ function renderSelection(frame, insights) {
   if (tlBtn) {
     tlBtn.onclick = () => openTimelapse(frame);
   }
+
+  syncDiagnosisPanel(frame);
+  expandAnalysisFeedback();
+}
+
+function setAnalysisFeedbackExpanded(expanded) {
+  const panel = document.getElementById("analysisFeedbackPanel");
+  if (!panel) return;
+  panel.classList.toggle("is-collapsed", !expanded);
+  const btn = document.getElementById("afbToggleBtn");
+  if (btn) {
+    btn.setAttribute("aria-expanded", String(expanded));
+    const label = btn.querySelector(".afb-toggle-label");
+    if (label) label.textContent = expanded ? "접기" : "펴기";
+  }
+}
+
+let _afbInitialExpandSkipped = false;
+function expandAnalysisFeedback() {
+  // Skip the initial bootstrap renderSelection so the panel stays collapsed
+  // until the user actually clicks a photo.
+  if (!_afbInitialExpandSkipped) { _afbInitialExpandSkipped = true; return; }
+  setAnalysisFeedbackExpanded(true);
+}
+
+function syncDiagnosisPanel(frame) {
+  if (!frame) return;
+  const railNumber = Number(frame.rail_number);
+  const railLabel = Number.isFinite(railNumber) && railNumber > 0
+    ? String(Math.round(railNumber)).padStart(3, "0")
+    : String(frame.rail_name || "-").replace(/^rail[_-]?/i, "").padStart(3, "0");
+  const distance = Number(frame.odom_x);
+  const distanceLabel = Number.isFinite(distance) ? `${distance.toFixed(1)}m` : "-";
+  const title = `레일 ${railLabel} - ${distanceLabel}`;
+
+  const titleEl = document.getElementById("diagPhotoTitle");
+  if (titleEl) titleEl.textContent = title;
+  const detailTitleEl = document.getElementById("diagDetailTitle");
+  if (detailTitleEl) detailTitleEl.textContent = title;
+
+  // Pick the first available camera image, fall back to contact sheet
+  const cameraName = (frame.cameras && Object.keys(frame.cameras)[0]) || null;
+  const photoUrl = (cameraName && frame.cameras[cameraName]?.url) || frame.contact_sheet_url || "";
+
+  for (const id of ["diagSelectedThumb", "diagDetailThumb"]) {
+    const img = document.getElementById(id);
+    if (!img || !photoUrl) continue;
+    img.src = photoUrl;
+    img.alt = title;
+    img.hidden = false;
+  }
 }
 
 // ─── Timelapse ────────────────────────────────────────────────────────────────
@@ -6409,6 +6460,62 @@ async function bootstrap() {
   document.getElementById("tlCloseBtn")?.addEventListener("click", closeTimelapse);
   document.getElementById("timelapseModal")?.addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeTimelapse();
+  });
+
+  // 분석 의견 토글 (collapse/expand)
+  document.getElementById("afbToggleBtn")?.addEventListener("click", () => {
+    const panel = document.getElementById("analysisFeedbackPanel");
+    if (!panel) return;
+    setAnalysisFeedbackExpanded(panel.classList.contains("is-collapsed"));
+  });
+
+  // The minimap canvas reads its size from the DOM; while it's display:none
+  // the canvas has 0×0 pixels and the last draw is invalidated. Whenever the
+  // minimap becomes visible again we have to re-measure and repaint it.
+  const repaintMinimapIfVisible = () => {
+    requestAnimationFrame(() => {
+      const mm = document.querySelector(".map-minimap-layer");
+      if (!mm || mm.offsetWidth === 0) return;
+      if (typeof currentMap?.drawMiniMap === "function") currentMap.drawMiniMap();
+      currentMap?.queueRender();
+    });
+  };
+
+  // 좌측 수직 레일 — 미니맵/사진 진단 요청 뷰 전환
+  // 접힌 상태에서 레일 버튼을 누르면 패널이 펴지면서 해당 뷰로 전환됨
+  const setLeftView = (view) => {
+    const card = document.querySelector(".map-card");
+    if (!card) return;
+    card.setAttribute("data-left-view", view);
+    card.classList.remove("is-left-collapsed");
+    const minimapBtn = document.getElementById("railMinimapBtn");
+    const diagBtn = document.getElementById("railDiagnosisBtn");
+    minimapBtn?.classList.toggle("is-active", view === "minimap");
+    diagBtn?.classList.toggle("is-active", view === "diagnosis");
+    if (view === "minimap") repaintMinimapIfVisible();
+  };
+  document.getElementById("railMinimapBtn")?.addEventListener("click", () => setLeftView("minimap"));
+  document.getElementById("railDiagnosisBtn")?.addEventListener("click", () => setLeftView("diagnosis"));
+
+  // 좌측 콘텐츠 컬럼 접기/펴기 (rail만 남기고 미니맵/진단 패널 숨김)
+  document.getElementById("leftCollapseBtn")?.addEventListener("click", () => {
+    const card = document.querySelector(".map-card");
+    if (!card) return;
+    card.classList.toggle("is-left-collapsed");
+    // 펴짐 + 미니맵 모드일 때만 재페인트 필요
+    if (!card.classList.contains("is-left-collapsed") &&
+        card.getAttribute("data-left-view") === "minimap") {
+      repaintMinimapIfVisible();
+    }
+  });
+
+  // 세로 의견 패널 접기 (내부 토글 버튼)
+  document.getElementById("vfbCollapseBtn")?.addEventListener("click", () => {
+    document.querySelector(".map-card")?.classList.add("is-vfb-collapsed");
+  });
+  // 세로 의견 패널 재오픈 (접힌 상태에서 보이는 별도 버튼)
+  document.getElementById("vfbReopenerBtn")?.addEventListener("click", () => {
+    document.querySelector(".map-card")?.classList.remove("is-vfb-collapsed");
   });
 
   // Selection tabs

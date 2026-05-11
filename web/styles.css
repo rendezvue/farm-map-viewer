@@ -7696,3 +7696,1117 @@ body,
     border-top: 0;
   }
 }
+
+/* ─── Map overlay slimming (HUD, controls, scrollbars) ────────────────── */
+/* Default to subtle (lower opacity / smaller chrome); pop on hover */
+.map-viewport .hud {
+  right: auto;
+  left: 10px;
+  bottom: 24px; /* sit above the horizontal scrollbar (bottom: 4, height: 14) */
+  gap: 4px;
+  opacity: 0.6;
+  transition: opacity 0.18s ease;
+}
+
+.map-viewport:hover .hud,
+.map-viewport .hud:hover { opacity: 1; }
+
+.map-viewport .hud-card {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  background: rgba(10, 16, 12, 0.7);
+}
+.map-viewport .hud-card-camera { min-width: 0; }
+
+.map-viewport .hud-label {
+  display: inline;
+  font-size: 8px;
+  letter-spacing: 0.8px;
+}
+
+.map-viewport .hud-card strong,
+.map-viewport .hud-card-camera strong {
+  display: inline;
+  font-size: 10.5px;
+  margin-top: 0;
+}
+
+.map-control-stack {
+  top: auto !important;
+  bottom: 22px !important;
+  right: 4px !important;
+  gap: 4px !important;
+  flex-direction: column !important;
+  opacity: 0.62;
+  transition: opacity 0.18s ease;
+}
+.map-viewport:hover .map-control-stack,
+.map-control-stack:hover { opacity: 1; }
+
+.map-icon-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 5px !important;
+  font-size: 14px !important;
+}
+.map-fit-btn { font-size: 12px !important; }
+
+.map-vertical-scrollbar {
+  top: 10px !important;
+  right: 4px !important;
+  bottom: 120px !important; /* leave room for control stack below */
+  width: 14px !important;
+  padding: 3px 2px !important;
+  gap: 3px !important;
+  border-radius: 4px !important;
+  opacity: 0.55;
+  transition: opacity 0.18s ease;
+}
+.map-viewport:hover .map-vertical-scrollbar,
+.map-vertical-scrollbar:hover { opacity: 1; }
+
+.map-vertical-scrollbar .map-scroll-arrow {
+  width: 10px !important;
+  height: 10px !important;
+  flex: 0 0 10px !important;
+  border-radius: 3px !important;
+}
+.map-vertical-scrollbar .map-scroll-arrow::before {
+  transform: translate(-50%, -50%) scale(0.7);
+}
+
+.map-vertical-scrollbar .map-scroll-track {
+  width: 6px !important;
+  min-height: 30px !important;
+  border-radius: 999px !important;
+}
+.map-vertical-scrollbar .map-scroll-thumb {
+  left: -2px !important;
+  width: 10px !important;
+  min-height: 16px !important;
+}
+
+.map-horizontal-scrollbar {
+  left: 8px !important;
+  right: 28px !important;
+  bottom: 4px !important;
+  height: 14px !important;
+  padding: 2px 3px !important;
+  gap: 3px !important;
+  border-radius: 4px !important;
+  opacity: 0.55;
+  transition: opacity 0.18s ease;
+}
+.map-viewport:hover .map-horizontal-scrollbar,
+.map-horizontal-scrollbar:hover { opacity: 1; }
+
+.map-horizontal-scrollbar .map-scroll-arrow {
+  width: 10px !important;
+  height: 10px !important;
+  flex: 0 0 10px !important;
+  border-radius: 3px !important;
+}
+.map-horizontal-scrollbar .map-scroll-arrow::before {
+  transform: translate(-50%, -50%) scale(0.7);
+}
+
+.map-horizontal-scrollbar .map-scroll-track {
+  height: 6px !important;
+  min-width: 60px !important;
+}
+.map-horizontal-scrollbar .map-scroll-thumb {
+  top: -2px !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 10px !important;
+}
+
+/* ─── 사진 진단 요청 (right of map) & 분석 의견 (bottom) ───────────────── */
+
+/* 3-column / 2-row grid:
+   row 1 — rail | left content | main
+   row 2 — .    |       .      | analysis
+   The diagnosis layer is hidden by default and only takes col 2 when toggled */
+.map-card,
+.content-area .map-stage .map-card {
+  position: relative;
+  /* Map-card is always sized as if the left content panel is collapsed.
+     Left content (minimap / diagnosis) sits on top of the main map as an
+     absolutely-positioned overlay, so the Detections viewport always uses
+     the maximum width. */
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0;
+}
+
+.map-side-rail      { grid-column: 1; grid-row: 1 / span 2; }
+.map-main-layer     { grid-column: 2; grid-row: 1; }
+.analysis-feedback-layer { grid-column: 2; grid-row: 2; }
+
+/* Left content panels are overlays over the main map */
+.map-minimap-layer,
+.diagnosis-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 56px;
+  width: 410px;
+  z-index: 20;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.06);
+}
+
+/* Default minimap mode: minimap shown, diagnosis hidden */
+.diagnosis-layer { display: none; }
+
+.map-card[data-left-view="diagnosis"] .map-minimap-layer { display: none; }
+.map-card[data-left-view="diagnosis"] .diagnosis-layer { display: flex; }
+
+/* Collapsed: both overlays hidden, only rail + main map visible */
+.map-card.is-left-collapsed .map-minimap-layer,
+.map-card.is-left-collapsed .diagnosis-layer { display: none; }
+
+/* Vertical feedback panel (sits to the RIGHT of the diagnosis panel) */
+.vfb-layer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(56px + 410px);
+  width: 320px;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  background: #f5f6f8;
+  border-left: 1px solid #e4e6ea;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.06);
+  padding: 12px 14px 14px;
+  color: #1f232b;
+  font-size: 11.5px;
+  overflow: visible;
+}
+
+/* Only visible when diagnosis mode is active AND the left layer isn't collapsed */
+.map-card[data-left-view="diagnosis"]:not(.is-left-collapsed) .vfb-layer {
+  display: flex;
+}
+.map-card[data-left-view="diagnosis"].is-vfb-collapsed .vfb-layer,
+.map-card.is-vfb-collapsed .vfb-layer {
+  display: none;
+}
+
+.vfb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.vfb-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.vfb-count { color: #2e8b3e; font-weight: 800; }
+
+.vfb-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #3b414d;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+}
+.vfb-refresh svg { width: 11px; height: 11px; color: #2e8b3e; }
+.vfb-refresh:hover { background: #f0f1f4; }
+
+.vfb-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 10.5px;
+}
+
+.vfb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+.vfb-list::-webkit-scrollbar { width: 5px; }
+.vfb-list::-webkit-scrollbar-thumb { background: #d4d8dd; border-radius: 3px; }
+
+.vfb-more {
+  margin-top: 8px;
+}
+
+/* Collapse toggle attached to the right edge of the vertical feedback layer */
+.vfb-collapse-btn {
+  position: absolute;
+  right: -11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 44px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid #e4e6ea;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(31, 35, 43, 0.08);
+  color: #4b5563;
+  cursor: pointer;
+}
+.vfb-collapse-btn:hover { background: #f5f6f8; color: #1f232b; }
+.vfb-collapse-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+  transform: rotate(180deg); /* default: panel open → chevron points right (>) toward map */
+}
+.map-card.is-vfb-collapsed .vfb-collapse-chevron {
+  transform: rotate(0deg); /* collapsed → chevron points left (<) toward where panel hides */
+}
+
+/* When vfb is collapsed, expose a small reopener button parked at the diag-panel's right edge */
+.vfb-reopener {
+  position: absolute;
+  left: calc(56px + 410px - 11px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 44px;
+  z-index: 49;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid #e4e6ea;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(31, 35, 43, 0.08);
+  color: #4b5563;
+  cursor: pointer;
+}
+.vfb-reopener svg { width: 14px; height: 14px; }
+.map-card[data-left-view="diagnosis"].is-vfb-collapsed:not(.is-left-collapsed) .vfb-reopener {
+  display: inline-flex;
+}
+.vfb-reopener:hover { background: #f5f6f8; color: #1f232b; }
+
+/* Left vertical rail — Naver-map-like icon column */
+.map-side-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 8px 6px;
+  background: #ffffff;
+  border-right: 1px solid #e6e8ec;
+}
+
+.map-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  border: 0;
+  border-radius: 8px;
+  color: #4b5563;
+  background: transparent;
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+}
+.map-rail-btn:hover {
+  background: #f4f6f8;
+  color: #1f232b;
+}
+
+.map-rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: inherit;
+  background: transparent;
+  transition: background 0.14s, color 0.14s;
+}
+
+.map-rail-icon svg { width: 20px; height: 20px; }
+
+.map-rail-label {
+  display: block;
+  line-height: 1.1;
+}
+
+.map-rail-btn.is-active {
+  color: #ffffff;
+  background: #1f6feb;
+  box-shadow: 0 1px 2px rgba(31, 111, 235, 0.22);
+}
+.map-rail-btn.is-active:hover {
+  background: #1a63d1;
+  color: #ffffff;
+}
+
+/* Left content collapse toggle (small chevron tab on the right edge) */
+.map-left-collapse-btn {
+  position: absolute;
+  left: calc(56px + 410px - 11px); /* fully on the left content side, not straddling main map */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 44px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #e4e6ea;
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(31, 35, 43, 0.08);
+  color: #4b5563;
+  cursor: pointer;
+  transition: left 0.2s ease, background 0.14s, color 0.14s;
+}
+.map-left-collapse-btn:hover { background: #f5f6f8; color: #1f232b; }
+.map-left-collapse-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+/* Left-collapsed: overlays hidden (rule above), button parks next to rail */
+.map-card.is-left-collapsed .map-left-collapse-btn {
+  left: calc(56px - 11px);
+}
+.map-card.is-left-collapsed .map-left-collapse-chevron {
+  transform: rotate(180deg);
+}
+
+/* In diagnosis mode the vfb collapse/reopen button takes the vertical centre
+   position (at right-of-vfb or right-of-diag); push the master left-collapse
+   button up near the top so the two never overlap. */
+.map-card[data-left-view="diagnosis"]:not(.is-left-collapsed) .map-left-collapse-btn {
+  top: 38px;
+  transform: translateY(0);
+}
+.map-card[data-left-view="diagnosis"]:not(.is-left-collapsed):not(.is-vfb-collapsed) .map-left-collapse-btn {
+  left: calc(56px + 410px + 320px - 11px);
+}
+
+/* Diagnosis request panel (shown on the LEFT only when its rail button is active) */
+.diagnosis-layer {
+  /* width set by overlay rule above (410px) */
+  flex-shrink: 0;
+  /* display set by mode selector above (default: none) */
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: #ffffff;
+  border-left: 1px solid #e4e6ea;
+  box-shadow: -1px 0 0 rgba(31, 35, 43, 0.04);
+  color: #1f232b;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.diagnosis-layer::-webkit-scrollbar { width: 6px; }
+.diagnosis-layer::-webkit-scrollbar-thumb { background: #d4d8dd; border-radius: 3px; }
+
+.diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.diag-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #1f232b;
+  letter-spacing: -0.02em;
+}
+
+.diag-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #5b6271;
+  border-radius: 6px;
+}
+.diag-close svg { width: 16px; height: 16px; }
+.diag-close:hover { background: #f0f1f4; color: #1f232b; }
+
+.diag-section { display: flex; flex-direction: column; gap: 6px; }
+
+.diag-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #1f232b;
+  letter-spacing: -0.01em;
+}
+
+.diag-section-title em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a909c;
+  margin-left: 4px;
+}
+
+.diag-photo-row {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.diag-photo-thumb {
+  position: relative;
+  width: 82px;
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #d8d6cf;
+}
+
+.diag-photo-placeholder {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 30% 70%, rgba(255, 90, 80, 0.6) 0 5%, transparent 6%),
+    radial-gradient(circle at 60% 60%, rgba(255, 90, 80, 0.6) 0 4%, transparent 5%),
+    radial-gradient(circle at 50% 30%, rgba(120, 180, 90, 0.5) 0 8%, transparent 9%),
+    linear-gradient(160deg, #4d6a3b 0%, #2e3f25 60%, #1d2718 100%);
+}
+
+.diag-photo-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.diag-photo-check {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #2e8b3e;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.diag-photo-check svg { width: 13px; height: 13px; }
+
+.diag-photo-meta { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+.diag-photo-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1f232b;
+  letter-spacing: -0.01em;
+}
+
+.diag-meta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diag-meta-list li {
+  display: grid;
+  grid-template-columns: 14px 52px 1fr;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: #545a66;
+}
+
+.diag-meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a909c;
+}
+.diag-meta-icon svg { width: 13px; height: 13px; }
+
+.diag-meta-key { color: #8a909c; font-weight: 600; }
+.diag-meta-val { color: #1f232b; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.diag-other-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #3b414d;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+}
+.diag-other-btn:hover { background: #f5f6f8; }
+
+.diag-textarea-wrap {
+  position: relative;
+  border: 1px solid #d9dde5;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 7px 9px 18px;
+}
+
+.diag-textarea {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #1f232b;
+  background: transparent;
+  outline: none;
+}
+.diag-textarea::placeholder { color: #9aa0ab; }
+
+.diag-textarea-counter {
+  position: absolute;
+  right: 10px;
+  bottom: 7px;
+  font-size: 10.5px;
+  color: #9aa0ab;
+  font-weight: 600;
+}
+
+.diag-target-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.diag-target-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 7px 5px 6px;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 9px;
+  color: #5b6271;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.diag-target-card strong {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #1f232b;
+}
+
+.diag-target-card small {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #8a909c;
+}
+
+.diag-target-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #f1f3f6;
+  color: #6b7280;
+  margin-bottom: 1px;
+}
+.diag-target-icon svg { width: 14px; height: 14px; }
+
+.diag-target-card.is-selected {
+  border-color: #3b8a4c;
+  background: #f4faf5;
+  box-shadow: 0 0 0 1px #3b8a4c inset;
+}
+.diag-target-card.is-selected .diag-target-icon { background: #e3f3e7; color: #2e8b3e; }
+
+.diag-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 34px;
+  border-radius: 8px;
+  background: #3b8a4c;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgba(31, 35, 43, 0.06);
+}
+.diag-cta:hover { background: #34803f; }
+.diag-cta svg { width: 16px; height: 16px; }
+
+.diag-cta-note,
+.diag-privacy-note {
+  margin: -2px 0 0;
+  font-size: 10.5px;
+  color: #8a909c;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.diag-privacy-note {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+}
+.diag-privacy-note svg { width: 12px; height: 12px; color: #8a909c; }
+
+.diag-section-detail {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid #eef0f3;
+  gap: 5px;
+}
+
+.diag-detail-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+  font-size: 10.5px;
+  color: #5b6271;
+}
+
+.diag-detail-key { font-weight: 700; color: #1f232b; }
+
+.diag-detail-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+  background: #ffffff;
+  font-weight: 700;
+  color: #1f232b;
+}
+.diag-detail-select svg { width: 12px; height: 12px; color: #8a909c; }
+
+.diag-detail-meta { font-size: 10.5px; color: #8a909c; white-space: nowrap; }
+.diag-detail-meta strong { font-weight: 700; color: #1f232b; }
+
+.diag-detail-card {
+  display: grid;
+  grid-template-columns: 48px 1fr 26px;
+  gap: 9px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid #e4e6ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.diag-detail-thumb {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.diag-detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.diag-detail-info strong { font-size: 12px; font-weight: 800; color: #1f232b; }
+.diag-detail-info span { font-size: 10.5px; color: #8a909c; }
+
+.diag-detail-upload {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+  color: #5b6271;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.diag-detail-upload svg { width: 14px; height: 14px; }
+.diag-detail-upload:hover { background: #f5f6f8; color: #1f232b; }
+
+.diag-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border: 1px solid #e4e6ea;
+  border-radius: 9px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.diag-detail-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 4px;
+  border-left: 1px solid #eef0f3;
+}
+.diag-detail-stats > div:first-child { border-left: 0; }
+.diag-detail-stats span { font-size: 10.5px; color: #8a909c; font-weight: 600; }
+.diag-detail-stats strong { font-size: 13px; color: #2e8b3e; font-weight: 800; font-family: 'DM Mono', monospace; }
+
+.diag-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid #eef0f3;
+}
+
+.diag-footer-text { font-size: 11px; color: #5b6271; font-weight: 600; }
+
+.diag-footer-actions { display: inline-flex; gap: 6px; }
+.diag-footer-actions button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f1f3f6;
+  color: #5b6271;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.diag-footer-actions button:hover { background: #e6e8ec; color: #1f232b; }
+.diag-footer-actions svg { width: 14px; height: 14px; }
+
+/* Bottom row: 분석 의견 */
+.analysis-feedback-layer {
+  flex-shrink: 0;
+  padding: 10px 16px 12px;
+  background: #f5f6f8;
+  color: #1f232b;
+  border-top: 1px solid #e4e6ea;
+  max-height: 38vh;
+  overflow-y: auto;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+}
+
+.analysis-feedback-layer.is-collapsed {
+  max-height: 38px;
+  overflow: hidden;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.analysis-feedback-layer.is-collapsed .afb-grid,
+.analysis-feedback-layer.is-collapsed .afb-more,
+.analysis-feedback-layer.is-collapsed .afb-refresh,
+.analysis-feedback-layer.is-collapsed .afb-filters {
+  display: none;
+}
+
+.analysis-feedback-layer.is-collapsed .afb-head {
+  margin-bottom: 0;
+}
+
+.afb-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #3b414d;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+}
+.afb-toggle:hover { background: #f5f6f8; }
+.afb-toggle-chevron {
+  width: 11px;
+  height: 11px;
+  color: #6b7280;
+  transition: transform 0.2s ease;
+}
+
+.analysis-feedback-layer:not(.is-collapsed) .afb-toggle-chevron {
+  transform: rotate(180deg);
+}
+
+.afb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.afb-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.afb-count { color: #2e8b3e; font-weight: 800; }
+
+.afb-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3b414d;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+}
+.afb-refresh svg { width: 12px; height: 12px; color: #2e8b3e; }
+.afb-refresh:hover { background: #f5f6f8; }
+
+.afb-filters {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: #5b6271;
+}
+
+.afb-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.afb-check input { accent-color: #3b8a4c; width: 13px; height: 13px; }
+
+.afb-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 110px;
+  padding: 4px 9px;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+  font-weight: 700;
+  color: #1f232b;
+}
+.afb-select svg { width: 12px; height: 12px; color: #8a909c; }
+
+.afb-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.afb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px 7px;
+  background: #ffffff;
+  border: 1px solid #e4e6ea;
+  border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(31, 35, 43, 0.04);
+  min-height: 0;
+}
+
+.afb-card-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.afb-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.afb-tag-expert    { background: #e3f3e7; color: #2e8b3e; }
+.afb-tag-community { background: #fdefcf; color: #b07a16; }
+.afb-tag-ai        { background: #e3edff; color: #2f6dd5; }
+.afb-tag-status    { background: #eef0f3; color: #5b6271; font-weight: 700; }
+
+.afb-time {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: #8a909c;
+  font-weight: 600;
+}
+
+.afb-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+}
+
+.afb-author strong { font-weight: 800; color: #1f232b; }
+.afb-author-role {
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid #d9dde5;
+  color: #6b7280;
+  font-size: 10px;
+}
+
+.afb-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #d4d8dd;
+  flex-shrink: 0;
+}
+
+.afb-avatar-1 { background: linear-gradient(135deg, #4a6e8a 0%, #2c4356 100%); }
+.afb-avatar-2 { background: linear-gradient(135deg, #6d7a85 0%, #3f4954 100%); }
+
+.afb-body {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #3b414d;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.afb-body br { display: none; }
+
+.afb-body-tight {
+  font-size: 11px;
+  color: #1f232b;
+  -webkit-line-clamp: 2;
+}
+
+.afb-confidence {
+  margin: 1px 0 4px;
+  font-size: 10.5px;
+  color: #5b6271;
+  font-weight: 600;
+}
+
+.afb-confidence strong {
+  color: #2f6dd5;
+  font-weight: 800;
+  font-family: 'DM Mono', monospace;
+}
+
+.afb-card-foot {
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.afb-card-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.afb-card-foot em { font-style: normal; font-weight: 700; color: #1f232b; }
+.afb-card-foot svg { width: 13px; height: 13px; color: #8a909c; }
+
+.afb-report-btn {
+  margin-top: auto;
+  padding: 5px 0;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2e8b3e;
+}
+.afb-report-btn:hover { background: #f5f6f8; }
+
+.afb-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: fit-content;
+  margin: 8px auto 0;
+  padding: 4px 14px;
+  background: #ffffff;
+  border: 1px solid #d9dde5;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #3b414d;
+}
+.afb-more:hover { background: #f5f6f8; }
+.afb-more svg { width: 12px; height: 12px; color: #5b6271; }
+
+@media (max-width: 1100px) {
+  .diagnosis-layer { width: 320px; padding: 14px 16px; }
+  .afb-grid { grid-template-columns: 1fr; }
+  .afb-filters { width: 100%; margin-left: 0; }
+}
